@@ -2,7 +2,6 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from studentinfo_scrap import AcademiaClient
 from fastapi.middleware.cors import CORSMiddleware
-import json
 
 
 
@@ -56,11 +55,7 @@ async def scrape_portal(request: LoginRequest):
         if attendance_data and day_order is not None:
             attendance_data['day_order'] = day_order
             
-        if attendance_data:
-            print("\n" + "="*50)
-            print("COMPLETE STUDENT DATA")
-            print("="*50)
-            print(json.dumps(attendance_data, indent=2))
+   
 
         # Step 4: Fetch timetable
         timetable_data = client.get_timetable()

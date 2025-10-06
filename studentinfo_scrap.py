@@ -376,7 +376,7 @@ class AcademiaClient:
         
         # Find and parse course data using regex from the decoded HTML
         # Pattern to match course rows: </tr><td>NUMBER</td><td>CODE</td>...
-        course_pattern = r'</tr><td>(\d+)</td><td>([^<]+)</td><td>([^<]+)</td><td>(\d+)</td><td>([^<]+)</td><td>([^<]+)</td><td>([^<]+)</td><td>([^<]+)</td><td[^>]*>([^<]+)</td><td>([^<]*)</td><td>([^<]+)</td>'
+        course_pattern = r'<td>(\d+)</td><td>([^<]+)</td><td>([^<]+)</td><td>(\d+)</td><td>([^<]+)</td><td>([^<]+)</td><td>([^<]+)</td><td>([^<]+)</td><td[^>]*>([^<]+)</td><td>([^<]*)</td><td>([^<]+)</td>'
         
         courses_found = re.findall(course_pattern, html_decoded)
         
