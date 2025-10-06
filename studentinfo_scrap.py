@@ -226,9 +226,12 @@ class AcademiaClient:
                     course_code_parts = course_code_raw.split('\n')
                     course_code = course_code_parts[0]
                     registration_type = course_code_parts[1] if len(course_code_parts) > 1 else ''
-                    
-                    # Create unique key
-                    course_key = course_code + registration_type
+
+                    # Get category to make truly unique key
+                    category = cells[2].get_text(strip=True)
+
+                    # Create unique key using course_code + category
+                    course_key = course_code + category
                     
                     hours_conducted = int(cells[6].get_text(strip=True))
                     hours_absent = int(cells[7].get_text(strip=True))
@@ -266,6 +269,9 @@ class AcademiaClient:
                         course_code = cells[0].get_text(strip=True)
                         course_type = cells[1].get_text(strip=True)
                         
+                        # Create unique key using course_code + course_type
+                        marks_key = course_code + course_type
+                        
                         # Parse test performance
                         performance_cell = cells[2]
                         tests = []
@@ -298,8 +304,8 @@ class AcademiaClient:
                                                 'percentage': round((obtained_marks / max_marks) * 100, 2) if max_marks > 0 else 0.0
                                             })
                         
-                        # Add to marks dict
-                        data['marks'][course_code] = {
+                        # Add to marks dict with unique key
+                        data['marks'][marks_key] = {
                             'course_type': course_type,
                             'tests': tests
                         }
@@ -459,6 +465,32 @@ class AcademiaClient:
         except Exception as e:
             print(f"✗ Failed to fetch timetable: {str(e)}\n")
             return None
+        
+    def get_day_order(self) -> Optional[int]:
+        """Fetch current day order from welcome page"""
+        print("Fetching day order...")
+        
+        url = f'{self.BASE_URL}/srm_university/academia-academic-services/page/WELCOME'
+        
+        try:
+            response = self.session.get(url, headers=self._get_page_headers())
+            response.raise_for_status()
+            
+            # Search for day order pattern in the response
+            # Pattern: \x3EDay\x20Order\x3A1\x26nbsp\x3B or similar variations
+            match = re.search(r'Day\\x20Order\\x3A(\d+)', response.text)
+            
+            if match:
+                day_order = int(match.group(1))
+                print(f"✓ Day Order retrieved: {day_order}\n")
+                return day_order
+            else:
+                print("✗ Could not find day order in response\n")
+                return None
+                
+        except Exception as e:
+            print(f"✗ Failed to fetch day order: {str(e)}\n")
+            return None
 
 
 def main():
@@ -479,8 +511,14 @@ def main():
     if not client.login():
         return
     
-    # Step 3: Fetch and parse attendance
+    # Step 3a: Fetch day order
+    day_order = client.get_day_order()
+
+    # Step 3b: Fetch and parse attendance
     attendance_data = client.get_attendance()
+    if attendance_data and day_order is not None:
+        attendance_data['day_order'] = day_order
+        
     if attendance_data:
         print("\n" + "="*50)
         print("COMPLETE STUDENT DATA")
