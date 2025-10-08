@@ -247,7 +247,7 @@ class AcademiaClient:
                         'room_no': cells[5].get_text(strip=True),
                         'hours_conducted': hours_conducted,
                         'hours_absent': hours_absent,
-                        'attendance_percentage': float(cells[8].get_text(strip=True))
+                        'attendance_percentage': float(cells[8].get_text(strip=True)) if cells[8].get_text(strip=True).replace('.','').isdigit() else 0.0
                     }
             
             # Calculate overall attendance
@@ -294,8 +294,8 @@ class AcademiaClient:
                                         if '/' in test_name_line:
                                             test_parts = test_name_line.split('/')
                                             test_name = test_parts[0]
-                                            max_marks = float(test_parts[1])
-                                            obtained_marks = float(score_line)
+                                            max_marks = float(test_parts[1]) if test_parts[1].replace('.','').replace('-','').isdigit() else 0.0
+                                            obtained_marks = float(score_line) if score_line.replace('.','').replace('-','').isdigit() else 0.0
                                             
                                             tests.append({
                                                 'test_name': test_name,
