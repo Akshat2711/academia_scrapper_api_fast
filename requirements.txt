@@ -1,12 +1,18 @@
+aiohappyeyeballs==2.6.1
+aiosignal==1.4.0
 annotated-types==0.7.0
 anyio==4.11.0
+attrs==25.4.0
 beautifulsoup4==4.14.2
 certifi==2025.8.3
 charset-normalizer==3.4.3
 click==8.3.0
 fastapi==0.118.0
+frozenlist==1.8.0
 h11==0.16.0
 idna==3.10
+multidict==6.7.0
+propcache==0.4.1
 pydantic==2.11.9
 pydantic_core==2.33.2
 requests==2.32.5
@@ -17,3 +23,4 @@ typing-inspection==0.4.1
 typing_extensions==4.15.0
 urllib3==2.5.0
 uvicorn==0.37.0
+yarl==1.22.0

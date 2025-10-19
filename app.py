@@ -5,6 +5,8 @@ from fastapi.middleware.cors import CORSMiddleware
 
 
 
+
+
 app = FastAPI(title="academia Scraper API")
 
 # Configure CORS
@@ -54,9 +56,6 @@ async def scrape_portal(request: LoginRequest):
         attendance_data = client.get_attendance()
         if attendance_data and day_order is not None:
             attendance_data['day_order'] = day_order
-            
-   
-
         # Step 4: Fetch timetable
         timetable_data = client.get_timetable()
 
@@ -68,3 +67,6 @@ async def scrape_portal(request: LoginRequest):
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+
