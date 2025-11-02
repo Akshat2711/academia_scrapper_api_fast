@@ -55,7 +55,7 @@ async def scrape_portal(request: LoginRequest):
         if attendance_data and day_order is not None:
             attendance_data['day_order'] = day_order
         else:
-            attendance_data['day_order'] = 3  # default day order
+            attendance_data['day_order'] = 4  # default day order
 
         # Step 4: Fetch timetable
         timetable_data = client.get_timetable()
