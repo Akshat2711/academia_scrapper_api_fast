@@ -3,7 +3,6 @@ from typing import Dict, Optional, Any, List
 from bs4 import BeautifulSoup
 
 
-#helper fnc for parsing attendance data 
 def parse_attendance(html_content: str) -> Dict[str, Any]:
     """Parse attendance HTML to structured JSON matching desired format"""
     
@@ -122,6 +121,16 @@ def parse_attendance(html_content: str) -> Dict[str, Any]:
                     course_code = cells[0].get_text(strip=True)
                     course_type = cells[1].get_text(strip=True)
                     
+                    # **FIX: Validate that this is actually a course code**
+                    # Course codes should match pattern like 21XXX###X
+                    # Skip if it looks like marks data (contains multiple "/")
+                    if not re.match(r'^\d{2}[A-Z]{3}\d{3}[A-Z]$', course_code):
+                        continue
+                    
+                    # Also validate course_type is valid (Theory or Practical)
+                    if course_type not in ['Theory', 'Practical']:
+                        continue
+                    
                     # Create unique key using course_code + course_type
                     marks_key = course_code + course_type
                     
@@ -164,8 +173,6 @@ def parse_attendance(html_content: str) -> Dict[str, Any]:
                     }
     
     return data
-
-
 
 
 #helper function for parsing timetable data
