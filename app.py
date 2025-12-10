@@ -5,12 +5,11 @@ from fastapi.middleware.cors import CORSMiddleware
 
 app = FastAPI(title="Academia Scraper API")
 
-# Configure CORS
 origins = [
     "http://localhost",
     "http://localhost:3000",
     "http://127.0.0.1:3000",
-    "*",  # allow all origins (for development only)
+    "*",
 ]
 
 app.add_middleware(
@@ -34,7 +33,6 @@ async def health_check():
 
 @app.post("/scrape")
 async def scrape_portal(request: LoginRequest):
-    """Scrape portal data and automatically logout after completion"""
     client = None
     try:
         client = AcademiaClient(request.email, request.password)
@@ -47,24 +45,47 @@ async def scrape_portal(request: LoginRequest):
         if not client.login():
             raise HTTPException(status_code=401, detail="Login failed")
 
-        # Step 3a: Fetch day order
-        day_order = client.get_day_order()
+        # ---------- Step 3a: Day order ----------
+        day_order = None
+        try:
+            day_order = client.get_day_order()
+        except Exception as e:
+            print(f"✗ Failed to fetch day order: {e}")
 
-        # Step 3b: Fetch and parse attendance
-        attendance_data = client.get_attendance()
-        if attendance_data and day_order is not None:
-            attendance_data['day_order'] = day_order
-        else:
-            attendance_data['day_order'] = 3  # default day order
+        # ---------- Step 3b: Attendance ----------
+        attendance_data = None
+        try:
+            attendance_data = client.get_attendance()
+        except Exception as e:
+            # Log and keep going, don't crash the whole endpoint
+            print(f"✗ Failed to fetch attendance: {e}")
+            attendance_data = {
+                "error": "Failed to fetch attendance",
+                "details": str(e),
+            }
 
-        # Step 4: Fetch timetable
-        timetable_data = client.get_timetable()
+        # Make sure attendance_data is a dict
+        if attendance_data is None:
+            attendance_data = {}
 
-        # Prepare response
+        # Always set some day_order value
+        attendance_data["day_order"] = day_order if day_order is not None else 3
+
+        # ---------- Step 4: Timetable ----------
+        timetable_data = None
+        try:
+            timetable_data = client.get_timetable()
+        except Exception as e:
+            print(f"✗ Failed to fetch timetable: {e}")
+            timetable_data = {
+                "error": "Failed to fetch timetable",
+                "details": str(e),
+            }
+
         response_data = {
             "status": "success",
             "attendance": attendance_data,
-            "timetable": timetable_data
+            "timetable": timetable_data,
         }
 
         # Step 5: Auto-logout after scraping
@@ -74,14 +95,11 @@ async def scrape_portal(request: LoginRequest):
         return response_data
 
     except HTTPException:
-        # Re-raise HTTP exceptions
-        if client:
-            client.logout()  # Attempt logout even on error
-        raise
-    except Exception as e:
-        # Attempt logout on any error
         if client:
             client.logout()
+        raise
+    except Exception as e:
+        if client:
+            client.logout()
+        # For debugging you might want to log e here too
         raise HTTPException(status_code=500, detail=str(e))
-
-
