@@ -46,7 +46,7 @@ async def scrape_portal(request: LoginRequest):
         try:
             day_order = client.get_day_order()
         except Exception:
-            day_order = 1  # Default to 1 if fails
+            day_order = 1  # Default to  if fails
 
         # 2. Fetch Attendance (Initial attempt)
         attendance_data = None
@@ -73,6 +73,9 @@ async def scrape_portal(request: LoginRequest):
         if is_attendance_invalid and timetable_data and "error" not in timetable_data:
             print("ℹ Found timetable! Mimicking attendance format with zero values...")
             attendance_data = generate_mock_attendance_from_timetable(timetable_data)
+        
+        # Always set some day_order value
+        attendance_data["day_order"] = day_order
             
 
         # Final Response Construction
