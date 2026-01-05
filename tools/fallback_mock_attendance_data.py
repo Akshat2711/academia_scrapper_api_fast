@@ -48,6 +48,7 @@ def generate_mock_attendance_from_timetable(timetable_data):
             "program": student_info_raw.get("program"),
             "department": student_info_raw.get("department"),
             "semester": student_info_raw.get("semester"),
+            "batch": student_info_raw.get("batch"),
         },
         "attendance": {
             "courses": mock_courses,

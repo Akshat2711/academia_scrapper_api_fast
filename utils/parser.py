@@ -227,8 +227,8 @@ def parse_timetable(html_content: str) -> Dict[str, Any]:
                     data['student_info']['registration_number'] = value
                 elif label == 'Name':
                     data['student_info']['name'] = value
-                elif label == 'Batch':
-                    data['student_info']['batch'] = re.sub(r'[^0-9]', '', value)
+                elif 'Batch' in label: # This will now catch "Combo / Batch"
+                    data['student_info']['batch'] = value.split("/")[-1].strip()#we are only interested in batch
                 elif label == 'Mobile':
                     data['student_info']['mobile'] = value
                 elif label == 'Program':
