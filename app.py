@@ -54,7 +54,7 @@ async def scrape_portal(request: LoginRequest):
 
         # Normalize day order (CRITICAL)
         if not isinstance(day_order, int) or day_order <= 0:
-            day_order = 5  # Default to Day 5 if invalid
+            day_order = 2  # Default to Day 2 if invalid
 
         # --- ATTENDANCE ---
         try:
