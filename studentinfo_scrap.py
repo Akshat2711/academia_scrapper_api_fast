@@ -26,57 +26,73 @@ class AcademiaClient:
         self.session = requests.Session()
         self.identifier = None
         self.digest = None
+        self.csrf_token = None
         self._setup_session()
     
     def _setup_session(self):
-        """Set up session with user agent and initial cookies"""
+        """Set up session with user agent and get initial CSRF token"""
         self.session.headers.update({
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36'
         })
         
-        initial_cookies = {
-            '_uetvid': 'b3000840e89c11ef8036e75565fa990c',
-            '_ga_S234BK01XY': 'GS1.3.1745294863.2.0.1745294863.60.0.0',
-            '_ga_QNCRQG0GFE': 'GS2.1.s1756038219$o13$g1$t1756038490$j58$l0$h0',
-            '_ga': 'GA1.3.390342211.1722929679',
-            '_gid': 'GA1.3.2113967629.1759126016',
-            'zalb_74c3a1eecc': '62cd2f9337f58b07cdaa2f90f0ac1087',
-            'zccpn': 'da3eb9d9-c3f1-418c-a4a7-30a74a3aec85',
-            '_zcsr_tmp': 'da3eb9d9-c3f1-418c-a4a7-30a74a3aec85',
-            'JSESSIONID': '7A17742FC60777CB72F1A41EE40E757F',
-            'cli_rgn': 'IN',
-            'zalb_f0e8db9d3d': '983d6a65b2f29022f18db52385bfc639',
-            'iamcsr': '391788bd-2546-4716-8132-fe456c9b066a',
-            'stk': 'c799c6752fa5adf5621357e8bbc0b925',
-            '_ga_HQWPLLNMKY': 'GS2.3.s1759165956$o23$g0$t1759165956$j60$l0$h0'
-        }
-        self.session.cookies.update(initial_cookies)
+        # Visit login page to get fresh cookies and CSRF token
+        try:
+            login_page_url = f'{self.BASE_URL}/accounts/p/10002227248/signin'
+            params = {
+                'hide_fp': 'true',
+                'orgtype': '40',
+                'service_language': 'en',
+                'css_url': '/49910842/academia-academic-services/downloadPortalCustomCss/login',
+                'dcc': 'true',
+                'serviceurl': f'{self.BASE_URL}/portal/academia-academic-services/redirectFromLogin'
+            }
+            
+            response = self.session.get(login_page_url, params=params)
+            
+            # Extract CSRF token from cookies
+            if 'iamcsr' in self.session.cookies:
+                self.csrf_token = self.session.cookies.get('iamcsr')
+                print(f"✓ CSRF Token obtained: {self.csrf_token[:50]}...")
+            else:
+                print("⚠ Warning: No CSRF token found in cookies")
+                
+        except Exception as e:
+            print(f"⚠ Warning: Failed to initialize session: {str(e)}")
     
     def _get_common_headers(self) -> Dict[str, str]:
         """Get common headers for requests"""
-        return {
+        headers = {
             'Accept': '*/*',
             'Accept-Encoding': 'gzip, deflate, br, zstd',
             'Accept-Language': 'en-US,en;q=0.9,en-IN;q=0.8',
-            'Origin': f'{self.BASE_URL}',
+            'Connection': 'keep-alive',
+            'Origin': self.BASE_URL,
             'Referer': f'{self.BASE_URL}/accounts/p/10002227248/signin',
             'Sec-Fetch-Dest': 'empty',
             'Sec-Fetch-Mode': 'cors',
             'Sec-Fetch-Site': 'same-origin',
-            'X-ZCSRF-TOKEN': 'iamcsrcoo=391788bd-2546-4716-8132-fe456c9b066a',
             'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8'
         }
+        
+        # Add CSRF token if available
+        if self.csrf_token:
+            headers['X-ZCSRF-TOKEN'] = f'iamcsrcoo={self.csrf_token}'
+        
+        return headers
     
     def lookup_user(self) -> bool:
         """Perform user lookup to get identifier and digest"""
         print("Step 1: Performing user lookup...")
         
         url = f'{self.BASE_URL}/accounts/p/40-10002227248/signin/v2/lookup/{self.email}'
+        
+        import time
+        cli_time = str(int(time.time() * 1000))
+        
         data = {
             'mode': 'primary',
-            'cli_time': '1759165956409',
+            'cli_time': cli_time,
             'orgtype': '40',
-            'servicename': 'ZohoCreator',
             'service_language': 'en',
             'serviceurl': f'{self.BASE_URL}/portal/academia-academic-services/redirectFromLogin'
         }
@@ -90,14 +106,75 @@ class AcademiaClient:
             self.digest = lookup_data.get('lookup', {}).get('digest')
             
             if self.identifier and self.digest:
-                print(f"✓ Lookup successful\n")
+                print(f"✓ Lookup successful (identifier: {self.identifier})")
+                print(f"✓ Digest obtained: {self.digest[:50]}...\n")
                 return True
             else:
-                print("✗ Failed to get user identifier or digest\n")
+                print("✗ Failed to get user identifier or digest")
+                print(f"Response: {json.dumps(lookup_data, indent=2)}\n")
                 return False
                 
         except Exception as e:
             print(f"✗ Lookup failed: {str(e)}\n")
+            return False
+    
+    def _close_active_sessions(self, redirect_uri: str, service_url: str, service_language: str, orgtype: str) -> bool:
+        """Close active sessions when prompted by the portal"""
+        print("Step 2b: Closing active sessions...")
+        
+        # First, visit the announcement page to get proper session state
+        try:
+            response = self.session.get(redirect_uri)
+            response.raise_for_status()
+            print("✓ Visited sessions reminder page")
+        except Exception as e:
+            print(f"⚠ Warning: Failed to visit announcement page: {str(e)}")
+        
+        # Now close active sessions
+        delete_url = f'{self.BASE_URL}/accounts/p/40-10002227248/webclient/v1/account/self/user/self/activesessions'
+        
+        headers = self._get_common_headers()
+        headers['Referer'] = redirect_uri
+        
+        try:
+            response = self.session.delete(delete_url, headers=headers)
+            response.raise_for_status()
+            print(f"✓ Active sessions deleted (Status: {response.status_code})")
+        except Exception as e:
+            print(f"⚠ Warning: Failed to delete sessions: {str(e)}")
+            # Continue anyway as this might not be critical
+        
+        # Visit the /next endpoint to confirm session closure
+        print("Step 2c: Confirming session closure...")
+        next_url = f'{self.BASE_URL}/accounts/p/40-10002227248/announcement/sessions-reminder/next'
+        next_params = {
+            'status': '2',  # Status 2 = sessions closed
+            'serviceurl': service_url,
+            'service_language': service_language,
+            'orgtype': orgtype
+        }
+        
+        next_headers = {
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+            'Accept-Language': 'en-US,en;q=0.9,en-IN;q=0.8',
+            'Connection': 'keep-alive',
+            'Referer': redirect_uri,
+            'Sec-Fetch-Dest': 'document',
+            'Sec-Fetch-Mode': 'navigate',
+            'Sec-Fetch-Site': 'same-origin',
+            'Sec-Fetch-User': '?1',
+            'Upgrade-Insecure-Requests': '1',
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+        }
+        
+        try:
+            response = self.session.get(next_url, params=next_params, headers=next_headers)
+            response.raise_for_status()
+            print(f"✓ Session closure confirmed (Status: {response.status_code})\n")
+            return True
+                
+        except Exception as e:
+            print(f"✗ Failed to confirm session closure: {str(e)}\n")
             return False
     
     def login(self) -> bool:
@@ -109,32 +186,104 @@ class AcademiaClient:
         print("Step 2: Logging in...")
         
         url = f'{self.BASE_URL}/accounts/p/40-10002227248/signin/v2/primary/{self.identifier}/password'
+        
+        import time
+        cli_time = str(int(time.time() * 1000))
+        
         params = {
             'digest': self.digest,
-            'cli_time': '1759165956409',
+            'cli_time': cli_time,
             'orgtype': '40',
-            'servicename': 'ZohoCreator',
             'service_language': 'en',
             'serviceurl': f'{self.BASE_URL}/portal/academia-academic-services/redirectFromLogin'
         }
         
+        # Create the password auth payload
         body = json.dumps({
             "passwordauth": {
                 "password": self.password
             }
         })
         
+        # Update headers for JSON content
+        headers = self._get_common_headers()
+        headers['Content-Type'] = 'application/json;charset=UTF-8'
+        
         try:
-            response = self.session.post(url, headers=self._get_common_headers(), params=params, data=body)
+            response = self.session.post(url, headers=headers, params=params, data=body)
             response.raise_for_status()
             
-            login_data = response.json()
-            
-            if login_data.get('passwordauth', {}).get('code') == 'SIGIN_SUCCESS':
-                print("✓ Login successful!\n")
-                return True
+            if response.status_code == 200:
+                login_data = response.json()
+                passwordauth = login_data.get('passwordauth', {})
+                code = passwordauth.get('code')
+                
+                # Handle successful login
+                if code == 'SIGIN_SUCCESS':
+                    print("✓ Login successful!\n")
+                    return True
+                
+                # Handle post-announcement redirection (active sessions)
+                elif code == 'POST_ANNOUCEMENT_REDIRECTION':
+                    print("✓ Login successful - handling active sessions...")
+                    redirect_uri = passwordauth.get('redirect_uri')
+                    
+                    if redirect_uri and 'sessions-reminder' in redirect_uri:
+                        # Close active sessions with proper flow
+                        service_url = params.get('serviceurl')
+                        service_language = params.get('service_language')
+                        orgtype = params.get('orgtype')
+                        
+                        if self._close_active_sessions(redirect_uri, service_url, service_language, orgtype):
+                            # After closing sessions and confirming, visit the final redirect
+                            print("Step 2d: Completing login flow...")
+                            
+                            redirect_headers = {
+                                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+                                'Accept-Language': 'en-US,en;q=0.9,en-IN;q=0.8',
+                                'Connection': 'keep-alive',
+                                'Referer': redirect_uri,
+                                'Sec-Fetch-Dest': 'document',
+                                'Sec-Fetch-Mode': 'navigate',
+                                'Sec-Fetch-Site': 'same-origin',
+                                'Sec-Fetch-User': '?1',
+                                'Upgrade-Insecure-Requests': '1',
+                                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+                            }
+                            
+                            try:
+                                final_response = self.session.get(service_url, headers=redirect_headers)
+                                
+                                if final_response.status_code == 200:
+                                    print("✓ Login flow completed successfully!\n")
+                                    return True
+                                else:
+                                    print(f"⚠ Warning: Unusual status code: {final_response.status_code}")
+                                    # Still might be logged in, so return True
+                                    return True
+                            except Exception as e:
+                                print(f"⚠ Warning: Final redirect failed: {str(e)}")
+                                # Session might still be valid, return True
+                                return True
+                        else:
+                            print("✗ Failed to close active sessions\n")
+                            return False
+                    else:
+                        print(f"✓ Login successful with redirect: {redirect_uri}\n")
+                        return True
+                
+                # Handle errors
+                elif 'error' in login_data:
+                    error_msg = login_data.get('error', {}).get('message', 'Unknown error')
+                    print(f"✗ Login failed: {error_msg}\n")
+                    return False
+                
+                else:
+                    print(f"⚠ Unexpected response code: {code}")
+                    print(f"Response: {json.dumps(login_data, indent=2)}\n")
+                    return False
             else:
-                print("✗ Login failed!\n")
+                print(f"✗ Login failed with status code: {response.status_code}\n")
                 return False
                 
         except Exception as e:
@@ -152,7 +301,7 @@ class AcademiaClient:
         }
         
         headers = {
-            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
             'Accept-Language': 'en-US,en;q=0.9,en-IN;q=0.8',
             'Connection': 'keep-alive',
             'Referer': f'{self.BASE_URL}/',
@@ -166,10 +315,8 @@ class AcademiaClient:
         
         try:
             response = self.session.get(url, headers=headers, params=params)
-            # Logout typically returns 200 or redirects
             if response.status_code in [200, 302, 303]:
                 print("✓ Logout successful!\n")
-                # Clear session cookies
                 self.session.cookies.clear()
                 return True
             else:
@@ -251,12 +398,6 @@ class AcademiaClient:
         except Exception as e:
             print(f"✗ Failed to fetch day order: {str(e)}\n")
             return None
-
-
-
-
-
-
 
 
 # Testing logic main function

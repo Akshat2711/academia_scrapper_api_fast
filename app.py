@@ -1,7 +1,6 @@
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from fastapi.middleware.cors import CORSMiddleware
-
 from studentinfo_scrap import AcademiaClient
 from tools.fallback_mock_attendance_data import generate_mock_attendance_from_timetable
 
@@ -54,7 +53,7 @@ async def scrape_portal(request: LoginRequest):
 
         # Normalize day order (CRITICAL)
         if not isinstance(day_order, int) or day_order <= 0:
-            day_order = 2  # Default to Day 2 if invalid
+            day_order = 1  # Default to Day 1 if invalid
 
         # --- ATTENDANCE ---
         try:
