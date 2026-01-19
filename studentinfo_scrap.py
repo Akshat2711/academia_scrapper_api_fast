@@ -30,12 +30,52 @@ class AcademiaClient:
         self._setup_session()
     
     def _setup_session(self):
-        """Set up session with user agent and get initial CSRF token"""
+        """Set up session with base cookies and fresh tokens (Hybrid Approach)"""
+        import time
+        import random
+        
+        # Enhanced browser headers
         self.session.headers.update({
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36'
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+            'Accept-Language': 'en-US,en;q=0.9',
+            'Accept-Encoding': 'gzip, deflate, br',
+            'DNT': '1',
+            'Connection': 'keep-alive',
+            'Upgrade-Insecure-Requests': '1',
+            'Sec-Fetch-Dest': 'document',
+            'Sec-Fetch-Mode': 'navigate',
+            'Sec-Fetch-Site': 'none',
+            'Sec-Fetch-User': '?1',
+            'Cache-Control': 'max-age=0'
         })
         
-        # Visit login page to get fresh cookies and CSRF token
+        # Use working cookies as base template with updated timestamps
+        current_time = int(time.time())
+        
+        initial_cookies = {
+            # Static cookies that worked before
+            '_uetvid': 'b3000840e89c11ef8036e75565fa990c',
+            'zalb_74c3a1eecc': '62cd2f9337f58b07cdaa2f90f0ac1087',
+            'zccpn': 'da3eb9d9-c3f1-418c-a4a7-30a74a3aec85',
+            '_zcsr_tmp': 'da3eb9d9-c3f1-418c-a4a7-30a74a3aec85',
+            'cli_rgn': 'IN',
+            'zalb_f0e8db9d3d': '983d6a65b2f29022f18db52385bfc639',
+            
+            # Dynamic cookies with updated timestamps
+            '_ga': f'GA1.3.390342211.{current_time - 86400}',  # Yesterday
+            '_gid': f'GA1.3.{random.randint(1000000000, 9999999999)}.{current_time}',
+            '_ga_S234BK01XY': f'GS1.3.{current_time}.1.0.{current_time}.60.0.0',
+            '_ga_QNCRQG0GFE': f'GS2.1.s{current_time}$o13$g1$t{current_time + 271}$j58$l0$h0',
+            '_ga_HQWPLLNMKY': f'GS2.3.s{current_time}$o23$g0$t{current_time}$j60$l0$h0',
+        }
+        
+        self.session.cookies.update(initial_cookies)
+        
+        # Add slight delay to simulate human behavior
+        time.sleep(random.uniform(0.5, 1.5))
+        
+        # Visit login page to get fresh CSRF token and session cookies
         try:
             login_page_url = f'{self.BASE_URL}/accounts/p/10002227248/signin'
             params = {
@@ -48,6 +88,7 @@ class AcademiaClient:
             }
             
             response = self.session.get(login_page_url, params=params)
+            response.raise_for_status()
             
             # Extract CSRF token from cookies
             if 'iamcsr' in self.session.cookies:
@@ -55,6 +96,10 @@ class AcademiaClient:
                 print(f"✓ CSRF Token obtained: {self.csrf_token[:50]}...")
             else:
                 print("⚠ Warning: No CSRF token found in cookies")
+            
+            # Extract JSESSIONID if present
+            if 'JSESSIONID' in self.session.cookies:
+                print(f"✓ Session ID obtained: {self.session.cookies.get('JSESSIONID')[:20]}...")
                 
         except Exception as e:
             print(f"⚠ Warning: Failed to initialize session: {str(e)}")
