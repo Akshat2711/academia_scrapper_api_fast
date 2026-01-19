@@ -11,10 +11,14 @@ fastapi==0.118.0
 frozenlist==1.8.0
 h11==0.16.0
 idna==3.10
+lxml==6.0.2
 multidict==6.7.0
+numpy==2.4.1
+opencv-python==4.13.0.90
 propcache==0.4.1
 pydantic==2.11.9
 pydantic_core==2.33.2
+pytesseract==0.3.13
 requests==2.32.5
 sniffio==1.3.1
 soupsieve==2.8

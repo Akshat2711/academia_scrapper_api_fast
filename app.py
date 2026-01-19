@@ -3,6 +3,7 @@ from pydantic import BaseModel
 from fastapi.middleware.cors import CORSMiddleware
 from studentinfo_scrap import AcademiaClient
 from tools.fallback_mock_attendance_data import generate_mock_attendance_from_timetable
+from tools.studentportal_result import scrape_student_portal
 
 
 app = FastAPI(title="Academia Scraper API")
@@ -25,6 +26,11 @@ app.add_middleware(
 
 class LoginRequest(BaseModel):
     email: str
+    password: str
+
+
+class StudentPortalRequest(BaseModel):
+    netid: str
     password: str
 
 
@@ -103,4 +109,38 @@ async def scrape_portal(request: LoginRequest):
     except Exception as e:
         if client:
             client.logout()
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/studentportal_result")
+async def scrape_student_portal_endpoint(request: StudentPortalRequest):
+    """
+    Scrape student data from SRM student portal
+    
+    **Parameters:**
+    - netid: Student NetID (e.g., "ld8809")
+    - password: Student password
+    
+    **Returns:**
+    - Student information (name, registration number, photo)
+    - Dashboard info, personal details, subjects, attendance
+    - Semester results, timetable, internal marks, hall ticket
+    - Performance metrics (fetch time, total time, parallel requests count)
+    """
+    try:
+        result = scrape_student_portal(request.netid, request.password)
+        
+        if result.get('status') == 'error':
+            error_msg = result.get('message', 'Unknown error')
+            if 'credentials' in error_msg.lower():
+                raise HTTPException(status_code=401, detail=error_msg)
+            else:
+                raise HTTPException(status_code=500, detail=error_msg)
+        
+        return result
+    
+    except HTTPException:
+        raise
+    
+    except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
