@@ -1,8 +1,7 @@
 import requests
 import json
 import re
-from typing import Dict, Optional, Any, List
-from bs4 import BeautifulSoup
+from typing import Dict, Optional, Any
 import time
 import random
 
@@ -34,6 +33,7 @@ class AcademiaClient:
     
     def _setup_session(self):
         """Set up session with base cookies and fresh tokens (Hybrid Approach)"""
+        print("[DEBUG] Starting session setup...")
         USER_AGENTS = [
         'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36',
         'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36',
@@ -41,6 +41,7 @@ class AcademiaClient:
         ]   
         
         # Enhanced browser headers
+        print("[DEBUG] Setting up headers and cookies...")
         self.session.headers.update({
             'User-Agent': random.choice(USER_AGENTS),
             'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
@@ -77,11 +78,13 @@ class AcademiaClient:
         }
         
         self.session.cookies.update(initial_cookies)
+        print(f"[DEBUG] Initial cookies set: {list(initial_cookies.keys())}")
         
         # Add slight delay to simulate human behavior
         time.sleep(random.uniform(0.5, 1.5))
         
         # Visit login page to get fresh CSRF token and session cookies
+        print("[DEBUG] Attempting to fetch login page for CSRF token...")
         try:
             login_page_url = f'{self.BASE_URL}/accounts/p/10002227248/signin'
             params = {
@@ -94,21 +97,30 @@ class AcademiaClient:
             }
             
             response = self.session.get(login_page_url, params=params)
+            print(f"[DEBUG] Login page response status: {response.status_code}")
             response.raise_for_status()
             
             # Extract CSRF token from cookies
+            print(f"[DEBUG] Current cookies: {list(self.session.cookies.keys())}")
             if 'iamcsr' in self.session.cookies:
                 self.csrf_token = self.session.cookies.get('iamcsr')
                 print("✓ CSRF Token obtained")
+                print(f"[DEBUG] CSRF Token value: {self.csrf_token[:20]}..." if len(self.csrf_token) > 20 else f"[DEBUG] CSRF Token value: {self.csrf_token}")
             else:
                 print("⚠ Warning: No CSRF token found in cookies")
+                print(f"[DEBUG] Available cookies: {dict(self.session.cookies)}")
             
             # Extract JSESSIONID if present
             if 'JSESSIONID' in self.session.cookies:
                 print("✓ Session ID obtained")
+                print(f"[DEBUG] JSESSIONID: {self.session.cookies.get('JSESSIONID')[:20]}...")
+            else:
+                print("[DEBUG] JSESSIONID not found in cookies")
                 
         except Exception as e:
             print(f"⚠ Warning: Failed to initialize session: {str(e)}")
+            print(f"[DEBUG] Exception type: {type(e).__name__}")
+            print(f"[DEBUG] Exception details: {repr(e)}")
     
     def _get_common_headers(self) -> Dict[str, str]:
         """Get common headers for requests"""
@@ -134,11 +146,13 @@ class AcademiaClient:
     def lookup_user(self) -> bool:
         """Perform user lookup to get identifier and digest"""
         print("Step 1: Performing user lookup...")
+        print(f"[DEBUG] Email: {self.email}")
         
         url = f'{self.BASE_URL}/accounts/p/40-10002227248/signin/v2/lookup/{self.email}'
+        print(f"[DEBUG] Lookup URL: {url}")
         
-        import time
         cli_time = str(int(time.time() * 1000))
+        print(f"[DEBUG] CLI time: {cli_time}")
         
         data = {
             'mode': 'primary',
@@ -149,23 +163,47 @@ class AcademiaClient:
         }
         
         try:
+            print("[DEBUG] Sending POST request for user lookup...")
             response = self.session.post(url, headers=self._get_common_headers(), data=data)
+            print(f"[DEBUG] Response status code: {response.status_code}")
+            print(f"[DEBUG] Response headers: {dict(response.headers)}")
             response.raise_for_status()
             
+            print(f"[DEBUG] Attempting to parse response as JSON...")
             lookup_data = response.json()
+            print(f"[DEBUG] JSON parsed successfully. Keys: {lookup_data.keys()}")
+            print(f"[DEBUG] Full response data: {json.dumps(lookup_data, indent=2)}")
             self.identifier = lookup_data.get('lookup', {}).get('identifier')
             self.digest = lookup_data.get('lookup', {}).get('digest')
+            print(f"✓ User identifier: {self.identifier}")
+            print(f"[DEBUG] Identifier extracted: {self.identifier is not None}")
+            print(f"✓ User digest: {self.digest}")
+            print(f"[DEBUG] Digest extracted: {self.digest is not None}")
             
             if self.identifier and self.digest:
                 print("✓ Lookup successful")
                 print("✓ Digest obtained\n")
                 return True
             else:
-                print("✗ Failed to get user identifier or digest\n")
+                print("✗ Failed to get user identifier or digest")
+                print(f"[DEBUG] Identifier is None: {self.identifier is None}")
+                print(f"[DEBUG] Digest is None: {self.digest is None}")
+                print(f"[DEBUG] 'lookup' key in response: {'lookup' in lookup_data}")
+                if 'lookup' in lookup_data:
+                    print(f"[DEBUG] lookup object: {lookup_data['lookup']}")
+                print()
                 return False
                 
+        except json.JSONDecodeError as e:
+            print(f"✗ Lookup failed: JSON parsing error")
+            print(f"[DEBUG] JSONDecodeError: {str(e)}")
+            print(f"[DEBUG] Response text: {response.text[:500]}...")
+            return False
         except Exception as e:
-            print(f"✗ Lookup failed: {str(e)}\n")
+            print(f"✗ Lookup failed: {str(e)}")
+            print(f"[DEBUG] Exception type: {type(e).__name__}")
+            print(f"[DEBUG] Exception traceback: {repr(e)}")
+            print()
             return False
     
     def _close_active_sessions(self, redirect_uri: str, service_url: str, service_language: str, orgtype: str) -> bool:
@@ -490,8 +528,8 @@ def main():
     """Main execution function"""
     
     # Configuration
-    EMAIL = "your_email@srmist.edu.in"
-    PASSWORD = "password123"
+    EMAIL = "as2469@srmist.edu.in"
+    PASSWORD = "pass"
     
     # Create client instance
     client = AcademiaClient(EMAIL, PASSWORD)
@@ -500,6 +538,7 @@ def main():
         # Step 1: Lookup user
         if not client.lookup_user():
             return
+        print("succesfully completed lookup")
         
         # Step 2: Login
         if not client.login():
