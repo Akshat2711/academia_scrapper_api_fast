@@ -180,7 +180,7 @@ def scrape_student_portal(netid, password):
     username = netid
     
     print(f"\n{'='*50}")
-    print(f"🔐 Login: {username}")
+    print("🔐 Login attempt in progress...")
     print(f"{'='*50}")
     
     session = requests.Session()
@@ -227,10 +227,10 @@ def scrape_student_portal(netid, password):
             if not (CV2_AVAILABLE and NUMPY_AVAILABLE and PYTESSERACT_AVAILABLE):
                 print(f"   ⚠️  CAPTCHA solver unavailable (missing cv2/numpy/pytesseract)")
             else:
-                print(f"   ⚠️  CAPTCHA solving failed, got: '{captcha}'")
+                print(f"   ⚠️  CAPTCHA solving failed")
             continue
         
-        print(f"   🔤 CAPTCHA: '{captcha}'")
+        print(f"   🔤 CAPTCHA solved")
         
         login_payload = {
             "txtAN": username,
@@ -291,7 +291,7 @@ def scrape_student_portal(netid, password):
                 print(f"   ⚠️  Photo scrape failed: {str(e)}")
                 student_info['photo_url'] = None
             
-            print(f"   👤 {student_info['name']} ({student_info['reg_no']})")
+            print(f"   👤 Student profile loaded")
             
             csrf_dash = dash_soup.find(id="csrfPreventionSalt")
             csrf_dash = csrf_dash.get('value', '') if csrf_dash else ""

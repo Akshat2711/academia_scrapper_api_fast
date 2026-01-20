@@ -3,6 +3,8 @@ import json
 import re
 from typing import Dict, Optional, Any, List
 from bs4 import BeautifulSoup
+import time
+import random
 
 # importing parser utility functions
 from utils.parser import *
@@ -12,6 +14,7 @@ class AcademiaClient:
     """Client for interacting with SRM Academia portal"""
     
     BASE_URL = "https://academia.srmist.edu.in"
+    
     
     def __init__(self, email: str, password: str):
         """
@@ -31,12 +34,15 @@ class AcademiaClient:
     
     def _setup_session(self):
         """Set up session with base cookies and fresh tokens (Hybrid Approach)"""
-        import time
-        import random
+        USER_AGENTS = [
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36',
+        'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36',
+        'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36',
+        ]   
         
         # Enhanced browser headers
         self.session.headers.update({
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36',
+            'User-Agent': random.choice(USER_AGENTS),
             'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
             'Accept-Language': 'en-US,en;q=0.9',
             'Accept-Encoding': 'gzip, deflate, br',
@@ -93,13 +99,13 @@ class AcademiaClient:
             # Extract CSRF token from cookies
             if 'iamcsr' in self.session.cookies:
                 self.csrf_token = self.session.cookies.get('iamcsr')
-                print(f"✓ CSRF Token obtained: {self.csrf_token[:50]}...")
+                print("✓ CSRF Token obtained")
             else:
                 print("⚠ Warning: No CSRF token found in cookies")
             
             # Extract JSESSIONID if present
             if 'JSESSIONID' in self.session.cookies:
-                print(f"✓ Session ID obtained: {self.session.cookies.get('JSESSIONID')[:20]}...")
+                print("✓ Session ID obtained")
                 
         except Exception as e:
             print(f"⚠ Warning: Failed to initialize session: {str(e)}")
@@ -151,12 +157,11 @@ class AcademiaClient:
             self.digest = lookup_data.get('lookup', {}).get('digest')
             
             if self.identifier and self.digest:
-                print(f"✓ Lookup successful (identifier: {self.identifier})")
-                print(f"✓ Digest obtained: {self.digest[:50]}...\n")
+                print("✓ Lookup successful")
+                print("✓ Digest obtained\n")
                 return True
             else:
-                print("✗ Failed to get user identifier or digest")
-                print(f"Response: {json.dumps(lookup_data, indent=2)}\n")
+                print("✗ Failed to get user identifier or digest\n")
                 return False
                 
         except Exception as e:
@@ -221,6 +226,37 @@ class AcademiaClient:
         except Exception as e:
             print(f"✗ Failed to confirm session closure: {str(e)}\n")
             return False
+        
+
+    def _close_blocked_sessions(self, redirect_uri: str) -> bool:
+        """Close blocked sessions when prompted by the portal"""
+        print("Step 2b: Closing blocked sessions...")
+        
+        # Visit the block-sessions page
+        try:
+            response = self.session.get(redirect_uri)
+            response.raise_for_status()
+            print("✓ Visited blocked sessions page")
+        except Exception as e:
+            print(f"⚠ Warning: Failed to visit announcement page: {str(e)}")
+        
+        # Delete blocked sessions
+        delete_url = f'{self.BASE_URL}/accounts/p/40-10002227248/webclient/v1/announcement/pre/blocksessions'
+        
+        headers = self._get_common_headers()
+        headers['Referer'] = redirect_uri
+        
+        try:
+            response = self.session.delete(delete_url, headers=headers)
+            response.raise_for_status()
+            print(f"✓ Blocked sessions deleted (Status: {response.status_code})\n")
+            return True
+        except Exception as e:
+            print(f"✗ Failed to delete blocked sessions: {str(e)}\n")
+            return False
+        
+
+
     
     def login(self) -> bool:
         """Login with password using digest from lookup"""
@@ -269,17 +305,21 @@ class AcademiaClient:
                     return True
                 
                 # Handle post-announcement redirection (active sessions)
-                elif code == 'POST_ANNOUCEMENT_REDIRECTION':
+                elif code == 'POST_ANNOUCEMENT_REDIRECTION' or code == 'SI303':
+
                     print("✓ Login successful - handling active sessions...")
                     redirect_uri = passwordauth.get('redirect_uri')
                     
-                    if redirect_uri and 'sessions-reminder' in redirect_uri:
+                    if redirect_uri and ('sessions-reminder' in redirect_uri or 'block-sessions' in redirect_uri):
+                        is_block_sessions = 'block-sessions' in redirect_uri
                         # Close active sessions with proper flow
                         service_url = params.get('serviceurl')
                         service_language = params.get('service_language')
                         orgtype = params.get('orgtype')
                         
-                        if self._close_active_sessions(redirect_uri, service_url, service_language, orgtype):
+                        success = (self._close_blocked_sessions(redirect_uri) if is_block_sessions 
+                    else self._close_active_sessions(redirect_uri, service_url, service_language, orgtype))
+                        if success:
                             # After closing sessions and confirming, visit the final redirect
                             print("Step 2d: Completing login flow...")
                             
@@ -475,17 +515,15 @@ def main():
             
         if attendance_data:
             print("\n" + "="*50)
-            print("COMPLETE STUDENT DATA")
+            print("✓ Attendance data retrieved successfully")
             print("="*50)
-            print(json.dumps(attendance_data, indent=2))
         
         # Step 4: Fetch and parse timetable
         timetable_data = client.get_timetable()
         if timetable_data:
             print("\n" + "="*50)
-            print("TIMETABLE DATA")
+            print("✓ Timetable data retrieved successfully")
             print("="*50)
-            print(json.dumps(timetable_data, indent=2))
     
     finally:
         # Always logout at the end
