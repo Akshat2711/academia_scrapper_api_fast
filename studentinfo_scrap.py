@@ -27,6 +27,7 @@ class AcademiaClient:
         self.identifier = None
         self.digest = None
         self.csrf_token = None
+        self.last_error = None
         self._setup_session()
     
     def _setup_session(self):
@@ -36,7 +37,7 @@ class AcademiaClient:
         
         # Enhanced browser headers
         self.session.headers.update({
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36',
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
             'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
             'Accept-Language': 'en-US,en;q=0.9',
             'Accept-Encoding': 'gzip, deflate, br',
@@ -155,11 +156,16 @@ class AcademiaClient:
                 print(f"✓ Digest obtained: {self.digest[:50]}...\n")
                 return True
             else:
-                print("✗ Failed to get user identifier or digest")
+                msg = f"Failed to get user identifier or digest. Status: {lookup_data.get('status_code')}"
+                if 'localized_message' in lookup_data:
+                    msg += f" - {lookup_data['localized_message']}"
+                print(f"✗ {msg}")
+                self.last_error = msg
                 print(f"Response: {json.dumps(lookup_data, indent=2)}\n")
                 return False
                 
         except Exception as e:
+            self.last_error = str(e)
             print(f"✗ Lookup failed: {str(e)}\n")
             return False
     
@@ -320,6 +326,7 @@ class AcademiaClient:
                 # Handle errors
                 elif 'error' in login_data:
                     error_msg = login_data.get('error', {}).get('message', 'Unknown error')
+                    self.last_error = error_msg
                     print(f"✗ Login failed: {error_msg}\n")
                     return False
                 

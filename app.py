@@ -47,8 +47,10 @@ async def scrape_portal(request: LoginRequest):
         client = AcademiaClient(request.email, request.password)
 
         # --- LOGIN ---
+        # --- LOGIN ---
         if not client.lookup_user() or not client.login():
-            raise HTTPException(status_code=401, detail="Login failed")
+            error_detail = client.last_error if client.last_error else "Login failed"
+            raise HTTPException(status_code=401, detail=error_detail)
 
         # --- DAY ORDER (SAFE + GUARANTEED) ---
         try:
