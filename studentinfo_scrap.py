@@ -35,9 +35,9 @@ class AcademiaClient:
         """Set up session with base cookies and fresh tokens (Hybrid Approach)"""
         print("[DEBUG] Starting session setup...")
         USER_AGENTS = [
-        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36',
-        'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36',
-        'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36',
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
+        'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
+        'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
         ]   
         
         # Enhanced browser headers
@@ -408,6 +408,7 @@ class AcademiaClient:
                 # Handle errors
                 elif 'error' in login_data:
                     error_msg = login_data.get('error', {}).get('message', 'Unknown error')
+                    self.last_error = error_msg
                     print(f"✗ Login failed: {error_msg}\n")
                     return False
                 
