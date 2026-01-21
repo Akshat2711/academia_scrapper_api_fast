@@ -295,7 +295,7 @@ class AcademiaClient:
         
 
 
-    
+        
     def login(self) -> bool:
         """Login with password using digest from lookup"""
         if not self.identifier or not self.digest:
@@ -334,31 +334,43 @@ class AcademiaClient:
             
             if response.status_code == 200:
                 login_data = response.json()
-                passwordauth = login_data.get('passwordauth', {})
-                code = passwordauth.get('code')
                 
-                # Handle successful login
-                if code == 'SIGIN_SUCCESS':
+                # Get code from both root level and passwordauth
+                code = login_data.get('code')
+                passwordauth = login_data.get('passwordauth', {})
+                inner_code = passwordauth.get('code')
+                
+                print(f"[DEBUG] Root code: {code}, Inner code: {inner_code}")
+                print(f"[DEBUG] Full response: {json.dumps(login_data, indent=2)}")
+                
+                # Handle successful login (check both locations)
+                if code in ['SI200', 'SIGIN_SUCCESS'] or inner_code == 'SIGIN_SUCCESS':
                     print("✓ Login successful!\n")
                     return True
                 
-                # Handle post-announcement redirection (active sessions)
-                elif code == 'POST_ANNOUCEMENT_REDIRECTION' or code == 'SI303':
-
-                    print("✓ Login successful - handling active sessions...")
+                # Handle post-announcement redirection (check both locations)
+                elif (code in ['POST_ANNOUCEMENT_REDIRECTION', 'SI302', 'SI303'] or 
+                    inner_code == 'POST_ANNOUCEMENT_REDIRECTION'):
+                    print(f"✓ Login successful - handling redirect (code: {code})...")
                     redirect_uri = passwordauth.get('redirect_uri')
                     
-                    if redirect_uri and ('sessions-reminder' in redirect_uri or 'block-sessions' in redirect_uri):
+                    if redirect_uri:
                         is_block_sessions = 'block-sessions' in redirect_uri
-                        # Close active sessions with proper flow
+                        
+                        # Close sessions with proper flow
                         service_url = params.get('serviceurl')
                         service_language = params.get('service_language')
                         orgtype = params.get('orgtype')
                         
-                        success = (self._close_blocked_sessions(redirect_uri) if is_block_sessions 
-                    else self._close_active_sessions(redirect_uri, service_url, service_language, orgtype))
+                        if is_block_sessions:
+                            success = self._close_blocked_sessions(redirect_uri)
+                        else:
+                            success = self._close_active_sessions(
+                                redirect_uri, service_url, service_language, orgtype
+                            )
+                        
                         if success:
-                            # After closing sessions and confirming, visit the final redirect
+                            # After closing sessions, complete the login flow
                             print("Step 2d: Completing login flow...")
                             
                             redirect_headers = {
@@ -382,18 +394,16 @@ class AcademiaClient:
                                     return True
                                 else:
                                     print(f"⚠ Warning: Unusual status code: {final_response.status_code}")
-                                    # Still might be logged in, so return True
                                     return True
                             except Exception as e:
                                 print(f"⚠ Warning: Final redirect failed: {str(e)}")
-                                # Session might still be valid, return True
                                 return True
                         else:
-                            print("✗ Failed to close active sessions\n")
+                            print("✗ Failed to close sessions\n")
                             return False
                     else:
-                        print(f"✓ Login successful with redirect: {redirect_uri}\n")
-                        return True
+                        print(f"✗ No redirect_uri found in response\n")
+                        return False
                 
                 # Handle errors
                 elif 'error' in login_data:
@@ -411,6 +421,8 @@ class AcademiaClient:
                 
         except Exception as e:
             print(f"✗ Login failed: {str(e)}\n")
+            import traceback
+            print(f"[DEBUG] Traceback: {traceback.format_exc()}")
             return False
     
     def logout(self) -> bool:

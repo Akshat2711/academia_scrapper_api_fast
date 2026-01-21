@@ -1,12 +1,11 @@
 import requests
 from bs4 import BeautifulSoup
 import os
-import json
 import urllib.parse
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import time
 
-# Optional imports
+# Optional imports for OCR
 try:
     import pytesseract
     PYTESSERACT_AVAILABLE = True
@@ -24,23 +23,6 @@ try:
     CV2_AVAILABLE = True
 except ImportError:
     CV2_AVAILABLE = False
-
-# Optional Flask imports (only needed for Flask app mode)
-try:
-    from flask import Flask, request, jsonify
-    from flasgger import Swagger
-    from flask_cors import CORS
-    FLASK_AVAILABLE = True
-except ImportError:
-    FLASK_AVAILABLE = False
-
-# Flask app initialization (only if Flask is available)
-if FLASK_AVAILABLE:
-    app = Flask(__name__)
-    CORS(app)
-    swagger = Swagger(app)
-else:
-    app = None
 
 # Configuration
 BASE_URL = "https://sp.srmist.edu.in/srmiststudentportal"
@@ -353,21 +335,6 @@ def scrape_student_portal(netid, password):
                 }
             }
             
-            """             # Save to JSON
-            try:
-                os.makedirs('output', exist_ok=True)
-                from datetime import datetime
-                timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-                filename = f"output/{student_info['reg_no']}_{timestamp}.json"
-                
-                with open(filename, 'w', encoding='utf-8') as f:
-                    json.dump(final_data, f, indent=2, ensure_ascii=False)
-                
-                final_data['saved_to'] = filename
-                print(f"💾 Saved: {filename}")
-            except Exception as e:
-                print(f"⚠️  Save failed: {str(e)}") """
-            
             return final_data
         
         else:
@@ -391,71 +358,3 @@ def scrape_student_portal(netid, password):
         "message": "Max retries exceeded",
         "details": "Failed to login after 4 retry attempts"
     }
-
-# Flask routes (only if Flask is available)
-if FLASK_AVAILABLE:
-    @app.route('/scrape', methods=['POST'])
-    def scrape_student_data():
-        """
-        Fast scraping of all student data using parallel requests
-        ---
-        tags:
-          - Student Portal
-        parameters:
-          - in: body
-            name: body
-            required: true
-            schema:
-              type: object
-              required:
-                - netid
-                - password
-              properties:
-                netid:
-                  type: string
-                  example: "ld8809"
-                password:
-                  type: string
-                  example: "your_password"
-        responses:
-          200:
-            description: Success
-          400:
-            description: Missing credentials
-          401:
-            description: Login failed
-          500:
-            description: Server error
-        """
-        data = request.get_json()
-        if not data or 'netid' not in data or 'password' not in data:
-            return jsonify({"status": "error", "message": "Missing netid or password"}), 400
-
-        result = scrape_student_portal(data['netid'], data['password'])
-        
-        if result.get('status') == 'error':
-            return jsonify(result), 401 if 'credentials' in result.get('message', '').lower() else 500
-        
-        return jsonify(result)
-
-    @app.route('/health', methods=['GET'])
-    def health_check():
-        """Health check"""
-        return jsonify({
-            "status": "healthy",
-            "tesseract": tesseract_found,
-            "opencv": CV2_AVAILABLE
-        })
-
-
-if __name__ == '__main__' and FLASK_AVAILABLE:
-    print("\n" + "="*50)
-    print("🚀 FAST SRM Student Portal Scraper")
-    print("="*50)
-    print(f"⚡ Parallel requests: Enabled")
-    print(f"✅ OpenCV: {CV2_AVAILABLE}")
-    print(f"✅ Tesseract: {tesseract_found}")
-    print("="*50)
-    print("\n📖 Swagger UI: http://localhost:5000/apidocs/")
-    print("🔍 Health: http://localhost:5000/health\n")
-    app.run(host='0.0.0.0', port=5000, threaded=True)
