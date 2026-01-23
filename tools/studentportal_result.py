@@ -44,84 +44,53 @@ ENDPOINTS = {
     'hall_ticket': (f"{BASE_URL}/students/report/StudentHallticket.jsp", "42")
 }
 
-# Tesseract Setup (only if pytesseract is available)
-tesseract_found = False
-if PYTESSERACT_AVAILABLE:
-    if os.name == 'nt':
-        paths = [r"C:\Program Files\Tesseract-OCR\tesseract.exe",
-                 r"C:\Program Files (x86)\Tesseract-OCR\tesseract.exe"]
-        for p in paths:
-            if os.path.exists(p):
-                pytesseract.pytesseract.tesseract_cmd = p
-                tesseract_found = True
-                break
-    else:
-        if os.path.exists("/usr/bin/tesseract"):
-            pytesseract.pytesseract.tesseract_cmd = "/usr/bin/tesseract"
-            tesseract_found = True
-
 def solve_captcha_fast(image_bytes):
-    """Optimized CAPTCHA solver with enhanced preprocessing techniques"""
+    """Optimized CAPTCHA solver with essential preprocessing techniques"""
     try:
         if not (CV2_AVAILABLE and NUMPY_AVAILABLE and PYTESSERACT_AVAILABLE):
             return ""
-        
+
         nparr = np.frombuffer(image_bytes, np.uint8)
-        
         img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
         if img is None:
             return ""
-        
+
         # Resize for better OCR
         img = cv2.resize(img, None, fx=2, fy=2, interpolation=cv2.INTER_CUBIC)
-        
-        # Try multiple preprocessing methods
-        configs = [
-            "--psm 8 -c tessedit_char_whitelist=ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789",
-            "--psm 7 -c tessedit_char_whitelist=ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789",
-            "--psm 6 -c tessedit_char_whitelist=ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789",
-            "--psm 8",
-            "--psm 7"
-        ]
-        
-        # Preprocessing variants
+
+        # Convert to grayscale
         gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-        
-        # Method 1: Adaptive threshold
-        adaptive = cv2.adaptiveThreshold(gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, 
+
+        # Essential preprocessing: Adaptive threshold (most effective)
+        adaptive = cv2.adaptiveThreshold(gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
                                          cv2.THRESH_BINARY, 11, 2)
-        
-        # Method 2: OTSU threshold with blur
+
+        # Alternative: OTSU threshold with blur
         blurred = cv2.GaussianBlur(gray, (5, 5), 0)
         _, otsu = cv2.threshold(blurred, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-        
-        # Method 3: Simple threshold
-        _, simple = cv2.threshold(gray, 127, 255, cv2.THRESH_BINARY)
-        
-        # Method 4: Morphological operations
-        kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (2, 2))
-        morph = cv2.morphologyEx(simple, cv2.MORPH_CLOSE, kernel)
-        morph = cv2.morphologyEx(morph, cv2.MORPH_OPEN, kernel)
-        
-        # Try all combinations
-        images = [adaptive, otsu, simple, morph, gray]
+
+        # Try OCR on both variants
+        configs = [
+            "--psm 8 -c tessedit_char_whitelist=ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789",
+            "--psm 7 -c tessedit_char_whitelist=ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"
+        ]
+
         results = []
-        
-        for img_variant in images:
+        for img_variant in [adaptive, otsu]:
             for config in configs:
                 try:
                     text = pytesseract.image_to_string(img_variant, config=config).strip()
-                    # Filter for valid captcha format (typically 4-8 chars, alphanumeric)
-                    if len(text) >= 4 and len(text) <= 8 and text.isalnum():
+                    # Filter for valid captcha format (4-8 alphanumeric chars)
+                    if 4 <= len(text) <= 8 and text.isalnum():
                         results.append(text)
-                        if len(text) >= 5:  # Good enough, return early
+                        if len(text) >= 5:  # Return good results immediately
                             return text
                 except:
                     continue
-        
-        # Return longest valid result
+
+        # Return best valid result
         valid_results = [r for r in results if r.isalnum() and 4 <= len(r) <= 8]
-        return max(valid_results, key=len) if valid_results else (results[0] if results else "")
+        return max(valid_results, key=len) if valid_results else ""
 
     except:
         return ""
@@ -181,7 +150,7 @@ def scrape_student_portal(netid, password):
     session.mount('https://', adapter)
     session.mount('http://', adapter)
 
-    MAX_RETRIES = 4
+    MAX_RETRIES = 3  # Reduced from 4 to 3 attempts as requested
     
     for attempt in range(1, MAX_RETRIES + 1):
         print(f"\n🔄 Attempt {attempt}/{MAX_RETRIES}")
@@ -191,28 +160,58 @@ def scrape_student_portal(netid, password):
             resp.raise_for_status()
         except Exception as e:
             print(f"   ✗ Connection error: {str(e)}")
-            return {"status": "error", "message": f"Connection error: {str(e)}"}
+            if attempt == MAX_RETRIES:
+                return {"status": "error", "message": f"Connection error: {str(e)}"}
+            time.sleep(1)  # Brief pause before retry
+            continue
         
         soup = BeautifulSoup(resp.text, 'lxml')
         csrf_val = soup.find(id="hdnCSRF")
         csrf_val = csrf_val.get('value', '') if csrf_val else ""
         
-        try:
-            captcha_content = session.get(CAPTCHA_URL, timeout=5).content
-        except Exception as e:
-            print(f"   ⚠️  CAPTCHA fetch failed: {str(e)}")
+        # Fetch CAPTCHA with retry logic
+        captcha_content = None
+        for captcha_attempt in range(3):  # Try CAPTCHA up to 3 times
+            try:
+                captcha_content = session.get(CAPTCHA_URL, timeout=5).content
+                if len(captcha_content) > 1000:  # Ensure we got actual image data
+                    break
+                else:
+                    print(f"   ⚠️  CAPTCHA fetch attempt {captcha_attempt + 1} returned small data, retrying...")
+                    time.sleep(0.5)  # Wait before retry
+            except Exception as e:
+                print(f"   ⚠️  CAPTCHA fetch failed (attempt {captcha_attempt + 1}): {str(e)}")
+                time.sleep(0.5)
+                continue
+        
+        if not captcha_content or len(captcha_content) < 1000:
+            print(f"   ✗ CAPTCHA fetch failed after retries")
+            if attempt == MAX_RETRIES:
+                return {"status": "error", "message": "Failed to fetch CAPTCHA"}
             continue
         
+        # Brief pause to ensure CAPTCHA is ready
+        time.sleep(0.2)
+        
+        # Solve CAPTCHA with retry
         captcha = solve_captcha_fast(captcha_content)
         
         if not captcha or len(captcha) < 4:
             if not (CV2_AVAILABLE and NUMPY_AVAILABLE and PYTESSERACT_AVAILABLE):
-                print(f"   ⚠️  CAPTCHA solver unavailable (missing cv2/numpy/pytesseract)")
+                print(f"   ⚠️  CAPTCHA solver unavailable (missing dependencies)")
             else:
-                print(f"   ⚠️  CAPTCHA solving failed")
+                print(f"   ⚠️  CAPTCHA solving failed (attempt {attempt})")
+            if attempt == MAX_RETRIES:
+                return {
+                    "status": "error", 
+                    "message": "CAPTCHA solving failed",
+                    "details": "Could not solve CAPTCHA after all attempts. Dependencies status: cv2={}, numpy={}, pytesseract={}".format(
+                        CV2_AVAILABLE, NUMPY_AVAILABLE, PYTESSERACT_AVAILABLE
+                    )
+                }
             continue
         
-        print(f"   🔤 CAPTCHA solved")
+        print(f"   🔤 CAPTCHA solved: {captcha}")
         
         login_payload = {
             "txtAN": username,
@@ -343,18 +342,17 @@ def scrape_student_portal(netid, password):
             if attempt == MAX_RETRIES:
                 return {
                     "status": "error", 
-                    "message": "Login failed after 4 attempts",
+                    "message": "Login failed after 3 attempts",
                     "details": "Could not authenticate with provided credentials. Possible causes: Invalid credentials, CAPTCHA solving failed, or portal temporarily unavailable.",
                     "dependencies_available": {
                         "cv2": CV2_AVAILABLE,
                         "numpy": NUMPY_AVAILABLE,
-                        "pytesseract": PYTESSERACT_AVAILABLE,
-                        "tesseract_binary": tesseract_found
+                        "pytesseract": PYTESSERACT_AVAILABLE
                     }
                 }
     
     return {
         "status": "error", 
         "message": "Max retries exceeded",
-        "details": "Failed to login after 4 retry attempts"
+        "details": "Failed to login after 3 retry attempts"
     }

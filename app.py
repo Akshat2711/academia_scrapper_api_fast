@@ -72,7 +72,6 @@ async def scrape_portal(request: LoginRequest):
         try:
             timetable_data = client.get_timetable()
         except Exception as e:
-            print(f"✗ Timetable scrape failed: {e}")
             timetable_data = None
 
         # --- ATTENDANCE FALLBACK ---
@@ -82,7 +81,6 @@ async def scrape_portal(request: LoginRequest):
         )
 
         if is_attendance_invalid and timetable_data and "error" not in timetable_data:
-            print("ℹ Using timetable → mock attendance fallback")
             attendance_data = generate_mock_attendance_from_timetable(timetable_data)
 
         # --- GUARANTEE ATTENDANCE STRUCTURE ---

@@ -78,7 +78,7 @@ class AcademiaClient:
         }
         
         self.session.cookies.update(initial_cookies)
-        print(f"[DEBUG] Initial cookies set: {list(initial_cookies.keys())}")
+        print(f"[DEBUG] Initial cookies setup completed")
         
         # Add slight delay to simulate human behavior
         time.sleep(random.uniform(0.5, 1.5))
@@ -101,19 +101,19 @@ class AcademiaClient:
             response.raise_for_status()
             
             # Extract CSRF token from cookies
-            print(f"[DEBUG] Current cookies: {list(self.session.cookies.keys())}")
+            """ print(f"[DEBUG] Current cookies: {list(self.session.cookies.keys())}") """
             if 'iamcsr' in self.session.cookies:
                 self.csrf_token = self.session.cookies.get('iamcsr')
                 print("✓ CSRF Token obtained")
-                print(f"[DEBUG] CSRF Token value: {self.csrf_token[:20]}..." if len(self.csrf_token) > 20 else f"[DEBUG] CSRF Token value: {self.csrf_token}")
+                """ print(f"[DEBUG] CSRF Token value: {self.csrf_token[:20]}..." if len(self.csrf_token) > 20 else f"[DEBUG] CSRF Token value: {self.csrf_token}") """
             else:
                 print("⚠ Warning: No CSRF token found in cookies")
-                print(f"[DEBUG] Available cookies: {dict(self.session.cookies)}")
+                """ print(f"[DEBUG] Available cookies: {dict(self.session.cookies)}") """
             
             # Extract JSESSIONID if present
             if 'JSESSIONID' in self.session.cookies:
                 print("✓ Session ID obtained")
-                print(f"[DEBUG] JSESSIONID: {self.session.cookies.get('JSESSIONID')[:20]}...")
+                """ print(f"[DEBUG] JSESSIONID: {self.session.cookies.get('JSESSIONID')[:20]}...") """
             else:
                 print("[DEBUG] JSESSIONID not found in cookies")
                 
@@ -146,10 +146,10 @@ class AcademiaClient:
     def lookup_user(self) -> bool:
         """Perform user lookup to get identifier and digest"""
         print("Step 1: Performing user lookup...")
-        print(f"[DEBUG] Email: {self.email}")
+        # print(f"[DEBUG] Email: {self.email}")
         
         url = f'{self.BASE_URL}/accounts/p/40-10002227248/signin/v2/lookup/{self.email}'
-        print(f"[DEBUG] Lookup URL: {url}")
+        """ print(f"[DEBUG] Lookup URL: {url}") """
         
         cli_time = str(int(time.time() * 1000))
         print(f"[DEBUG] CLI time: {cli_time}")
@@ -165,20 +165,20 @@ class AcademiaClient:
         try:
             print("[DEBUG] Sending POST request for user lookup...")
             response = self.session.post(url, headers=self._get_common_headers(), data=data)
-            print(f"[DEBUG] Response status code: {response.status_code}")
-            print(f"[DEBUG] Response headers: {dict(response.headers)}")
+            # print(f"[DEBUG] Response status code: {response.status_code}")
+            # print(f"[DEBUG] Response headers: {dict(response.headers)}")
             response.raise_for_status()
             
-            print(f"[DEBUG] Attempting to parse response as JSON...")
+            # print(f"[DEBUG] Attempting to parse response as JSON...")
             lookup_data = response.json()
-            print(f"[DEBUG] JSON parsed successfully. Keys: {lookup_data.keys()}")
-            print(f"[DEBUG] Full response data: {json.dumps(lookup_data, indent=2)}")
+            # print(f"[DEBUG] JSON parsed successfully. Keys: {lookup_data.keys()}")
+            # print(f"[DEBUG] Full response data: {json.dumps(lookup_data, indent=2)}")
             self.identifier = lookup_data.get('lookup', {}).get('identifier')
             self.digest = lookup_data.get('lookup', {}).get('digest')
-            print(f"✓ User identifier: {self.identifier}")
-            print(f"[DEBUG] Identifier extracted: {self.identifier is not None}")
-            print(f"✓ User digest: {self.digest}")
-            print(f"[DEBUG] Digest extracted: {self.digest is not None}")
+            # print(f"✓ User identifier: {self.identifier}")
+            # print(f"[DEBUG] Identifier extracted: {self.identifier is not None}")
+            # print(f"✓ User digest: {self.digest}")
+            # print(f"[DEBUG] Digest extracted: {self.digest is not None}")
             
             if self.identifier and self.digest:
                 print("✓ Lookup successful")
@@ -186,18 +186,18 @@ class AcademiaClient:
                 return True
             else:
                 print("✗ Failed to get user identifier or digest")
-                print(f"[DEBUG] Identifier is None: {self.identifier is None}")
-                print(f"[DEBUG] Digest is None: {self.digest is None}")
-                print(f"[DEBUG] 'lookup' key in response: {'lookup' in lookup_data}")
-                if 'lookup' in lookup_data:
-                    print(f"[DEBUG] lookup object: {lookup_data['lookup']}")
+                # print(f"[DEBUG] Identifier is None: {self.identifier is None}")
+                # print(f"[DEBUG] Digest is None: {self.digest is None}")
+                # print(f"[DEBUG] 'lookup' key in response: {'lookup' in lookup_data}")
+                # if 'lookup' in lookup_data:
+                #     print(f"[DEBUG] lookup object: {lookup_data['lookup']}")
                 print()
                 return False
                 
         except json.JSONDecodeError as e:
             print(f"✗ Lookup failed: JSON parsing error")
-            print(f"[DEBUG] JSONDecodeError: {str(e)}")
-            print(f"[DEBUG] Response text: {response.text[:500]}...")
+            # print(f"[DEBUG] JSONDecodeError: {str(e)}")
+            # print(f"[DEBUG] Response text: {response.text[:500]}...")
             return False
         except Exception as e:
             print(f"✗ Lookup failed: {str(e)}")
@@ -340,8 +340,8 @@ class AcademiaClient:
                 passwordauth = login_data.get('passwordauth', {})
                 inner_code = passwordauth.get('code')
                 
-                print(f"[DEBUG] Root code: {code}, Inner code: {inner_code}")
-                print(f"[DEBUG] Full response: {json.dumps(login_data, indent=2)}")
+                # print(f"[DEBUG] Root code: {code}, Inner code: {inner_code}")
+                # print(f"[DEBUG] Full response: {json.dumps(login_data, indent=2)}")
                 
                 # Handle successful login (check both locations)
                 if code in ['SI200', 'SIGIN_SUCCESS'] or inner_code == 'SIGIN_SUCCESS':
@@ -422,8 +422,8 @@ class AcademiaClient:
                 
         except Exception as e:
             print(f"✗ Login failed: {str(e)}\n")
-            import traceback
-            print(f"[DEBUG] Traceback: {traceback.format_exc()}")
+            # import traceback
+            # print(f"[DEBUG] Traceback: {traceback.format_exc()}")
             return False
     
     def logout(self) -> bool:
