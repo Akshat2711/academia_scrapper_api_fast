@@ -306,7 +306,7 @@ class AcademiaClient:
         
         url = f'{self.BASE_URL}/accounts/p/40-10002227248/signin/v2/primary/{self.identifier}/password'
         
-        import time
+        
         cli_time = str(int(time.time() * 1000))
         
         params = {
@@ -453,7 +453,10 @@ class AcademiaClient:
             response = self.session.get(url, headers=headers, params=params)
             if response.status_code in [200, 302, 303]:
                 print("✓ Logout successful!\n")
-                self.session.cookies.clear()
+                self.session.cookies.clear()  # NOW we clear cookies
+                self.identifier = None
+                self.digest = None
+                self.csrf_token = None
                 return True
             else:
                 print(f"✗ Logout failed with status: {response.status_code}\n")
@@ -534,6 +537,24 @@ class AcademiaClient:
         except Exception as e:
             print(f"✗ Failed to fetch day order: {str(e)}\n")
             return None
+    
+#for loading and saving session data
+    def get_session_data(self) -> dict:
+        """Export session data for reuse"""
+        return {
+            'cookies': self.session.cookies.get_dict(),
+            'identifier': self.identifier,
+            'digest': self.digest,
+            'csrf_token': self.csrf_token
+        }
+
+    def load_session_data(self, session_data: dict) -> None:
+        """Load previously saved session data"""
+        if session_data.get('cookies'):
+            self.session.cookies.update(session_data['cookies'])
+        self.identifier = session_data.get('identifier')
+        self.digest = session_data.get('digest')
+        self.csrf_token = session_data.get('csrf_token')
 
 
 # Testing logic main function

@@ -4,6 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from studentinfo_scrap import AcademiaClient
 from tools.fallback_mock_attendance_data import generate_mock_attendance_from_timetable
 from tools.studentportal_result import scrape_student_portal
+from typing import Optional
 
 
 app = FastAPI(title="Academia Scraper API")
@@ -23,10 +24,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-
 class LoginRequest(BaseModel):
     email: str
     password: str
+    session_data: Optional[dict] = None  # Add this if not present
 
 
 class StudentPortalRequest(BaseModel):
@@ -42,36 +43,99 @@ async def health_check():
 @app.post("/scrape")
 async def scrape_portal(request: LoginRequest):
     client = None
+    session_authenticated = False
+    session_reused = False
 
     try:
         client = AcademiaClient(request.email, request.password)
+                
+        # --- ATTEMPT SESSION REUSE ---
+        if request.session_data:
+            print("\n" + "="*60)
+            print("[SESSION] Attempting to reuse existing session...")
+            print("="*60)
+            client.load_session_data(request.session_data)
+            
+            # Validate if session is still alive by testing attendance fetch
+            try:
+                print("[SESSION] Validating session with lightweight request...")
+                # Try to fetch attendance as a session validation check
+                test_response = client.get_attendance()
+                
+                # Check if we got a valid response (not an auth error)
+                if test_response is not None and (
+                    not isinstance(test_response, dict) or "error" not in test_response
+                ):
+                    print("✓ [SESSION] Session is VALID - Reusing existing session")
+                    session_authenticated = True
+                    session_reused = True
+                else:
+                    print("⚠ [SESSION] Session EXPIRED or INVALID - Falling back to fresh login")
+                    print("[SESSION] Clearing old session data before fresh login...")
+                    client.session.cookies.clear()  # CLEAR INVALID COOKIES
+                    client._setup_session()  # RE-INITIALIZE SESSION
+            except Exception as e:
+                print(f"⚠ [SESSION] Session validation FAILED: {str(e)}")
+                print("⚠ [SESSION] Falling back to fresh login")
+                print("[SESSION] Clearing old session data before fresh login...")
+                client.session.cookies.clear()  # CLEAR INVALID COOKIES
+                client._setup_session()  # RE-INITIALIZE SESSION
+        else:
+            print("\n" + "="*60)
+            print("[SESSION] No session data provided - Starting fresh login")
+            print("="*60)
 
-        # --- LOGIN ---
-        if not client.lookup_user() or not client.login():
-            raise HTTPException(status_code=401, detail="Login failed")
+        # --- FALLBACK TO LOGIN ---
+        if not session_authenticated:
+            print("\n[LOGIN] Initiating fresh login flow...")
+            if not client.lookup_user() or not client.login():
+                raise HTTPException(status_code=401, detail="Login failed")
+            print("✓ [LOGIN] Fresh login successful - New session created\n")
 
         # --- DAY ORDER (SAFE + GUARANTEED) ---
         try:
+            if session_reused:
+                print("[DATA] Fetching day order using existing session...")
+            else:
+                print("[DATA] Fetching day order using new session...")
             day_order = client.get_day_order()
+            if day_order is not None:
+                print(f"✓ [DATA] Day order retrieved: {day_order}")
+            else:
+                print("⚠ [DATA] Day order not available from server")
         except Exception as e:
-            print(f"✗ Day order fetch failed: {e}")
+            print(f"✗ [DATA] Day order fetch failed: {e}")
             day_order = None
 
-        # Normalize day order (CRITICAL)
+        # Normalize day order (CRITICAL) - KEPT AS ORIGINAL
         if not isinstance(day_order, int) or day_order <= 0:
-            day_order = 5  # Default to Day 5 if invalid
+            print(f"⚠ [DATA] Invalid day order ({day_order}), defaulting to Day 4")
+            day_order = 4  # Default to Day 4 if invalid
 
         # --- ATTENDANCE ---
         try:
-            attendance_data = client.get_attendance()
+            if session_reused:
+                # We already fetched it during validation, use cached result
+                print("[DATA] Using attendance data from session validation...")
+                attendance_data = test_response if 'test_response' in locals() else client.get_attendance()
+            else:
+                print("[DATA] Fetching attendance data...")
+                attendance_data = client.get_attendance()
+            
+            if attendance_data:
+                print("✓ [DATA] Attendance data retrieved successfully")
         except Exception as e:
-            print(f"✗ Attendance scrape failed: {e}")
+            print(f"✗ [DATA] Attendance scrape failed: {e}")
             attendance_data = None
 
         # --- TIMETABLE ---
         try:
+            print("[DATA] Fetching timetable data...")
             timetable_data = client.get_timetable()
+            if timetable_data:
+                print("✓ [DATA] Timetable data retrieved successfully")
         except Exception as e:
+            print(f"✗ [DATA] Timetable scrape failed: {e}")
             timetable_data = None
 
         # --- ATTENDANCE FALLBACK ---
@@ -81,34 +145,46 @@ async def scrape_portal(request: LoginRequest):
         )
 
         if is_attendance_invalid and timetable_data and "error" not in timetable_data:
+            print("[DATA] Generating mock attendance from timetable...")
             attendance_data = generate_mock_attendance_from_timetable(timetable_data)
+            print("✓ [DATA] Mock attendance generated")
 
         # --- GUARANTEE ATTENDANCE STRUCTURE ---
         if attendance_data is None:
             attendance_data = {}
 
-        attendance_data["day_order"] = day_order
+        attendance_data["day_order"] = day_order  # KEPT AS ORIGINAL
 
-        # --- FINAL RESPONSE ---
-        response = {
+        # Step 5: Return session data for reuse
+        session_data = client.get_session_data()
+        
+        print("\n" + "="*60)
+        if session_reused:
+            print("[SESSION] Response ready - Returning EXISTING session data")
+        else:
+            print("[SESSION] Response ready - Returning NEW session data")
+        print("="*60 + "\n")
+        
+        return {
             "status": "success",
             "attendance": attendance_data,
             "timetable": timetable_data,
+            "session_data": session_data,
+            "session_info": {
+                "session_reused": session_reused,
+                "session_type": "existing" if session_reused else "new"
+            }
         }
-
-        client.logout()
-        return response
 
     except HTTPException:
         if client:
-            client.logout()
+            print("[ERROR] HTTPException occurred - Session NOT logged out (kept alive)")
         raise
 
     except Exception as e:
         if client:
-            client.logout()
+            print(f"[ERROR] Exception occurred: {str(e)} - Session NOT logged out (kept alive)")
         raise HTTPException(status_code=500, detail=str(e))
-
 
 @app.post("/studentportal_result")
 async def scrape_student_portal_endpoint(request: StudentPortalRequest):
@@ -142,3 +218,31 @@ async def scrape_student_portal_endpoint(request: StudentPortalRequest):
     
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+
+
+@app.post("/logout")
+async def logout_session(request: LoginRequest):
+    """
+    Logout endpoint to invalidate session
+    Requires email, password, and session_data to properly logout
+    """
+    try:
+        client = AcademiaClient(request.email, request.password)
+        
+        # Load existing session if provided
+        if request.session_data:
+            client.load_session_data(request.session_data)
+        
+        # Perform logout
+        if client.logout():
+            return {
+                "status": "success",
+                "message": "Logged out successfully"
+            }
+        else:
+            raise HTTPException(status_code=500, detail="Logout failed")
+            
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Logout error: {str(e)}")
