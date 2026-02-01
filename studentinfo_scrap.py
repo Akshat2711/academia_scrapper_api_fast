@@ -7,6 +7,8 @@ import random
 
 # importing parser utility functions
 from utils.parser import *
+#login error handler
+from tools.handle_login_error_codes import handle_login_response
 
 
 class AcademiaClient:
@@ -295,20 +297,21 @@ class AcademiaClient:
         
 
 
-        
-    def login(self) -> bool:
+
+    def login(self) -> dict:
         """Login with password using digest from lookup"""
         if not self.identifier or not self.digest:
             print("✗ No identifier/digest found. Run lookup_user() first.\n")
-            return False
-        
+            return {
+                "success": False,
+                "message": "No identifier/digest found"
+            }
+
         print("Step 2: Logging in...")
-        
+
         url = f'{self.BASE_URL}/accounts/p/40-10002227248/signin/v2/primary/{self.identifier}/password'
-        
-        
         cli_time = str(int(time.time() * 1000))
-        
+
         params = {
             'digest': self.digest,
             'cli_time': cli_time,
@@ -316,63 +319,78 @@ class AcademiaClient:
             'service_language': 'en',
             'serviceurl': f'{self.BASE_URL}/portal/academia-academic-services/redirectFromLogin'
         }
-        
-        # Create the password auth payload
+
         body = json.dumps({
             "passwordauth": {
                 "password": self.password
             }
         })
-        
-        # Update headers for JSON content
+
         headers = self._get_common_headers()
         headers['Content-Type'] = 'application/json;charset=UTF-8'
-        
+
         try:
             response = self.session.post(url, headers=headers, params=params, data=body)
             response.raise_for_status()
-            
+
             if response.status_code == 200:
                 login_data = response.json()
-                
-                # Get code from both root level and passwordauth
+
+                # -------------------------------------------------
+                # centralized error handler 
+                # -------------------------------------------------
+                handled = handle_login_response(login_data)
+                if handled.get("success") is False:
+                    self.last_error = handled.get("message")
+                    print(f"✗ Login failed: {self.last_error}\n")
+
+                    return {
+                        "success": False,
+                        "message": handled.get("message"),
+                        "type": handled.get("type"),
+                        "code": handled.get("code"),
+                        "raw": handled.get("raw"),
+                    }
+
+                # ---------------- LOGIN LOGIC ----------------
+
                 code = login_data.get('code')
                 passwordauth = login_data.get('passwordauth', {})
                 inner_code = passwordauth.get('code')
-                
-                # print(f"[DEBUG] Root code: {code}, Inner code: {inner_code}")
-                # print(f"[DEBUG] Full response: {json.dumps(login_data, indent=2)}")
-                
-                # Handle successful login (check both locations)
+
+                # Handle successful login
                 if code in ['SI200', 'SIGIN_SUCCESS'] or inner_code == 'SIGIN_SUCCESS':
                     print("✓ Login successful!\n")
-                    return True
-                
-                # Handle post-announcement redirection (check both locations)
-                elif (code in ['POST_ANNOUCEMENT_REDIRECTION', 'SI302', 'SI303'] or 
-                    inner_code == 'POST_ANNOUCEMENT_REDIRECTION'):
+                    return {"success": True}
+
+                # Handle post-announcement redirection
+                elif (
+                    code in ['POST_ANNOUCEMENT_REDIRECTION', 'SI302', 'SI303']
+                    or inner_code == 'POST_ANNOUCEMENT_REDIRECTION'
+                ):
                     print(f"✓ Login successful - handling redirect (code: {code})...")
                     redirect_uri = passwordauth.get('redirect_uri')
-                    
+
                     if redirect_uri:
                         is_block_sessions = 'block-sessions' in redirect_uri
-                        
-                        # Close sessions with proper flow
+
                         service_url = params.get('serviceurl')
                         service_language = params.get('service_language')
                         orgtype = params.get('orgtype')
-                        
+
                         if is_block_sessions:
                             success = self._close_blocked_sessions(redirect_uri)
                         else:
                             success = self._close_active_sessions(
-                                redirect_uri, service_url, service_language, orgtype
+                                redirect_uri,
+                                service_url,
+                                service_language,
+                                orgtype
                             )
-                        
+
                         if success:
-                            # After closing sessions, complete the login flow
                             print("Step 2d: Completing login flow...")
-                            
+
                             redirect_headers = {
                                 'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
                                 'Accept-Language': 'en-US,en;q=0.9,en-IN;q=0.8',
@@ -385,46 +403,65 @@ class AcademiaClient:
                                 'Upgrade-Insecure-Requests': '1',
                                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
                             }
-                            
+
                             try:
-                                final_response = self.session.get(service_url, headers=redirect_headers)
-                                
+                                final_response = self.session.get(
+                                    service_url,
+                                    headers=redirect_headers
+                                )
+
                                 if final_response.status_code == 200:
                                     print("✓ Login flow completed successfully!\n")
-                                    return True
+                                    return {"success": True}
                                 else:
                                     print(f"⚠ Warning: Unusual status code: {final_response.status_code}")
-                                    return True
+                                    return {"success": True}
+
                             except Exception as e:
                                 print(f"⚠ Warning: Final redirect failed: {str(e)}")
-                                return True
+                                return {"success": True}
+
                         else:
                             print("✗ Failed to close sessions\n")
-                            return False
+                            return {"success": False}
+
                     else:
-                        print(f"✗ No redirect_uri found in response\n")
-                        return False
-                
-                # Handle errors
+                        print("✗ No redirect_uri found in response\n")
+                        return {"success": False}
+
+                # Handle legacy error block 
                 elif 'error' in login_data:
                     error_msg = login_data.get('error', {}).get('message', 'Unknown error')
                     self.last_error = error_msg
                     print(f"✗ Login failed: {error_msg}\n")
-                    return False
-                
+                    return {
+                        "success": False,
+                        "message": error_msg
+                    }
+
                 else:
                     print(f"⚠ Unexpected response code: {code}")
                     print(f"Response: {json.dumps(login_data, indent=2)}\n")
-                    return False
+                    return {
+                        "success": False,
+                        "message": "Unexpected login response",
+                        "raw": login_data
+                    }
+
             else:
                 print(f"✗ Login failed with status code: {response.status_code}\n")
-                return False
-                
+                return {
+                    "success": False,
+                    "message": f"HTTP {response.status_code}"
+                }
+
         except Exception as e:
             print(f"✗ Login failed: {str(e)}\n")
-            # import traceback
-            # print(f"[DEBUG] Traceback: {traceback.format_exc()}")
-            return False
+            return {
+                "success": False,
+                "message": str(e)
+            }
+
     
     def logout(self) -> bool:
         """Logout from the academia portal"""
@@ -575,7 +612,9 @@ def main():
         print("succesfully completed lookup")
         
         # Step 2: Login
-        if not client.login():
+        result_login = client.login()
+        if not result_login["success"]:
+            print("error msg:",result_login["message"])
             return
         
         # Step 3a: Fetch day order

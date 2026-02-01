@@ -35,11 +35,6 @@ class StudentPortalRequest(BaseModel):
     password: str
 
 
-@app.get("/health")
-async def health_check():
-    return {"status": "ok"}
-
-
 @app.post("/scrape")
 async def scrape_portal(request: LoginRequest):
     client = None
@@ -88,8 +83,16 @@ async def scrape_portal(request: LoginRequest):
         # --- FALLBACK TO LOGIN ---
         if not session_authenticated:
             print("\n[LOGIN] Initiating fresh login flow...")
-            if not client.lookup_user() or not client.login():
-                raise HTTPException(status_code=401, detail="Login failed")
+            result_lookup = client.lookup_user()
+            result_login = client.login()
+            if not result_lookup or not result_login["success"]:
+                #error message
+                if not result_lookup:
+                    print("✗ [LOGIN] User lookup failed - Cannot proceed with login")
+                    raise HTTPException(status_code=401, detail="User lookup failed check your email id")
+                else:
+                    print(f"✗ [LOGIN] Login failed - {result_login.get('message', 'Unknown error')}")
+                    raise HTTPException(status_code=401, detail=result_login.get('message', 'Login failed'))
             print("✓ [LOGIN] Fresh login successful - New session created\n")
 
         # --- DAY ORDER (SAFE + GUARANTEED) ---
@@ -246,3 +249,12 @@ async def logout_session(request: LoginRequest):
             
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Logout error: {str(e)}")
+    
+
+
+
+
+
+@app.get("/health")
+async def health_check():
+    return {"status": "ok"}
