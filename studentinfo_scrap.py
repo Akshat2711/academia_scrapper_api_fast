@@ -599,7 +599,7 @@ def main():
     """Main execution function"""
     
     # Configuration
-    EMAIL = "as2469@srmist.edu.in"
+    EMAIL = "as0711@srmist.edu.in"
     PASSWORD = "pass"
     
     # Create client instance
