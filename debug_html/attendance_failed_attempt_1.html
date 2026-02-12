@@ -1,0 +1,98 @@
+<!-- $Id$ -->
+
+<!DOCTYPE html> <html><head><meta charset="UTF-8" /><meta name="robots" content="noindex">
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/><title>Academia - Academic Web Services Login</title>
+<link href='' rel="SHORTCUT ICON"> 
+<link rel="stylesheet" type="text/css" href="https://static.zohocdn.com/creator/app/css/newDefaultPortalCss.de77b23db129338da5ac3b93e2663c4b.css"/>
+<script type="text/javascript" src="https://static.zohocdn.com/creator/zcs1/js/jquery.586ebc8153c2550ef27f2ce2eb58b9c7.js"></script>
+<link rel="stylesheet" type="text/css" href="https://static.zohocdn.com/creator/zcs1/css/font-latonew.9eed39f534c23948c9af56aee271f0a5.css"/>
+<script type="text/javascript" src="https://static.zohocdn.com/creator/zcs1/js/tp-xregexp.4e97aa1b9e2629f25170377706314afb.js"></script>
+<link rel="stylesheet" type="text/css" href="https://static.zohocdn.com/creator/zcs1/css/jquery-intlTelInput.85726f72bbc1a9669ebaef42dc4fe457.css"/>
+<script type="text/javascript" src="https://static.zohocdn.com/creator/zcs1/js/jquery-intlTelInput.a44cbd73630f1b14b8e061f2f7fdadec.js"></script>
+<script type="text/javascript" src="https://static.zohocdn.com/creator/zcs1/js/jquery-intlTelInput-utils.83591d7ec466481e50cf5e37208fe6f1.js"></script>
+<script nonce="BR/aifIAdNM6YwIQ/K0Y4Q==">var d=document, s=d.createElement("div");s.id="zquartztracker";
+s.setAttribute("data-zqSettings",'{"consoleLogLevel":"All","sensitiveHeaders":"","sensitiveParams":""}');
+t=d.getElementsByTagName("script")[0]; t.parentNode.insertBefore(s,t);</script><script src="https://static.zohocdn.com/quartz/feedback/v2/zquartz-tracker.js" defer crossorigin="anonymous"></script>
+<script type="text/javascript" src='https://static.zohocdn.com/creator/app/js/portalLivePage.b8da99cfb223f3645e5a58dacc6205f4.js'></script><script nonce="BR/aifIAdNM6YwIQ/K0Y4Q==">var isEmailAllowed = true;
+var isMobileNumberAllowed = false;
+var isSignupPage = false;
+var signupPortalType = 1;
+var countryCode = 'IN';
+if(typeof ZCGlobal != 'undefined' && ZCGlobal.isPortal)
+{
+location.reload();
+}
+$(document).ready(function(){
+var currentCountryCode = 'IN';
+if(isSignupPage) {
+var loginIdField = $("#Email");
+portalLivePage.setupSignupForm(loginIdField, isEmailAllowed, isMobileNumberAllowed,currentCountryCode);
+}
+
+portalLivePage.setIframeSrc('academia\x2Dacademic\x2Dservices');
+
+var errMsg = '';
+if(errMsg != '')
+{
+portalLivePage.showErrorMsg(errMsg);
+}
+if(false) {
+if ('serviceWorker' in navigator) {
+navigator.serviceWorker.register("/serviceworker", {'scope':'../../'}).then(function(registration) {  //No I18N
+console.log('ServiceWorker registration successful with scope: ', registration.scope);
+}, function(err) {
+console.log('ServiceWorker registration failed: ', err);
+});
+}
+window.addEventListener('offline', function(){
+if(!navigator.onLine)
+{
+window.location.href = "/";
+}
+});
+window.addEventListener('beforeinstallprompt', function(event) {
+console.log('beforeinstallprompt');
+});
+}
+$("#signupBtn").click(function(){
+return portalLivePage.submitSignUpForm('49910842', true, false, 'academia-academic-services', isEmailAllowed, isMobileNumberAllowed, '/');
+});
+$("#zcPortalCaptchaReload").click(function(){
+$('#reloadCaptcha').addClass('zc-captcha-icon-rotated');
+portalLivePage.getNewCaptcha('49910842', 'academia-academic-services');
+$('#reloadCaptcha').removeClass('zc-captcha-icon-rotated');
+});
+});
+var i18n = {
+'zc.settings.live.cp.captchaabove'		: 'Enter\x20the\x20text\x20you\x20see\x20in\x20the\x20image\x20above', 
+'zc.cp.nameempty' 	: 'Name\x20can\x20not\x20be\x20empty.', 
+'zc.cp.namemaxlen' 	: 'Name\x20must\x20be\x20less\x20than\x2050\x20characters.', 
+'zc.cp.emailmaxlen' : 'Email\x20must\x20be\x20less\x20than\x2050\x20characters.', 
+'zc.cp.invalidemail': 'Please\x20enter\x20the\x20valid\x20email\x20address.', 
+'zc.cp.new.validnumber': 'Please\x20enter\x20a\x20valid\x20mobile\x20number', 
+'zc.cp.captchaerror': 'Image\x20text\x20not\x20entered\x20correctly.', 
+'zc.cp.emailexists' : 'This\x20email\x20already\x20registered.', 
+'zc.cp.commonerror' : 'Sorry,\x20Unable\x20to\x20process\x20your\x20request.\x20Try\x20again\x20later.', 
+'zc.settings.builder.customerrestriction.signup' : 'You\x20cannot\x20signup\x20with\x20this\x20email\x20address.\x20Please\x20contact\x20the\x20administrator\x20of\x20the\x20application.', 
+'zc.cp.new.namespecialchar' : 'Name\x20cannot\x20contain\x20special\x20characters' 
+};
+</script>
+<script nonce="BR/aifIAdNM6YwIQ/K0Y4Q==">(function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
+(i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
+m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)
+})(window,document,'script','https://www.google-analytics.com/analytics.js','ga');	
+ga('create', 'UA\x2D87280908\x2D2', 'auto');					
+ga('send', 'pageview');		
+ga('send', 'event', 'Zoho Creator - '+'academia\x2Dacademic\x2Dservices', 'Page View', 'Access Sign-In Page');	</script></head><body><!-- Customer Portal Default Signin Form  -->
+<div id="signinPage" class="boxCSS" style="margin: 5% auto 0;"><div class="form-container"><iframe id="signInIframe" name="zohoiam" frameborder="0" src="https&#x3a;&#x2f;&#x2f;academia.srmist.edu.in&#x2f;accounts&#x2f;p&#x2f;10002227248&#x2f;signin&#x3f;dcc&#x3d;true&amp;orgtype&#x3d;40&amp;hide_fp&#x3d;true&amp;service_language&#x3d;en&amp;css_url&#x3d;&#x2f;49910842&#x2f;academia-academic-services&#x2f;downloadPortalCustomCss&#x2f;login" ></iframe> </div><!-- <div style="width: 90%; margin:auto;border-top: 1px solid rgb(23,138,180);"></div>-->
+<div class="btn-link"><a href="&#x2f;reset" >Forgot Password?</a> </div></div><!-- Customer Portal Default Signup Form  -->
+
+<div class="zc-phone-country-field-container" id="phoneFieldWrapper"></div><!-- Signup Success Message -->
+<div id="signupSuccessMsg"><!-- 	<div style="background-color: rgba(234,120,93,1);width: 25%;display: inline-block;height: 2px;float: left;"></div><div style="background-color: rgba(72,187,180,1);width: 25%;display: inline-block;height: 2px;float: left;"></div><div style="background-color: rgba(70,97,186,1);width: 25%;display: inline-block;height: 2px;float: left;"></div><div style="background-color: #ffcc00;height: 2px;width: 25%;display: inline-block;float: left;"></div>-->
+<div class="success-msg-container"><div class="welcome_txt_big">Thank you for signing up!</div>
+<img src="https&#x3a;&#x2f;&#x2f;static.zohocdn.com&#x2f;creator&#x2f;app&#x2f;images&#x2f;signup-thanks.71f51bd3cbc1d7960113354419722965.svg" />
+<div class="welcome_txt">We have sent an email to <span id="succEmailId"></span> containing the invitation and a link to create your password.</div></div></div><div id="mobilesignupSuccessMsg"><div class="success-msg-container">
+<div class="welcome_txt_big">Thank you for signing up!</div>
+<img src="https&#x3a;&#x2f;&#x2f;static.zohocdn.com&#x2f;creator&#x2f;app&#x2f;images&#x2f;signup-thanks-mobile.0c042848c8522f4e200f18113aea99b8.svg" />
+<div id="mobileSuccessMsg" class="welcome_txt">Your mobile number {0} is registered. We have sent an invitation SMS to your registered mobile number.</div><a id="signinLink" class="zc-signin-link btn">Proceed to Sign In</a></div></div><!-- Message container -->
+<div id="show_message_container"><span id="show_success_message"></span></div><div class="Error-msg"><span class="error_icon"></span> <span class="error_message"></span></div><!-- Chat screen --> </body></html>

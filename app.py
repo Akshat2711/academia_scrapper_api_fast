@@ -117,7 +117,7 @@ async def scrape_portal(request: LoginRequest):
             
             if timetable_failed:
                 print("[RETRY] Parse failure detected - refetching all data with retry logic...")
-                result = fetch_all_data_with_retry(client, max_retries=2)
+                result = fetch_all_data_with_retry(client, max_retries=2, save_debug_html=False)
                 day_order = result['day_order']
                 attendance_data = result['attendance_data']
                 timetable_data = result['timetable_data']
@@ -125,7 +125,7 @@ async def scrape_portal(request: LoginRequest):
                 attendance_data = test_response
         else:
             # Fresh login - fetch all data with retry logic
-            result = fetch_all_data_with_retry(client, max_retries=2)
+            result = fetch_all_data_with_retry(client, max_retries=2, save_debug_html=False)
             day_order = result['day_order']
             attendance_data = result['attendance_data']
             timetable_data = result['timetable_data']

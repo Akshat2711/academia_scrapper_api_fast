@@ -1,13 +1,8 @@
-"""retries login when login flow fails to get correct resp (when page was not able to load completly),
-this function resuses session details of failed to retry login"""
-
-
-
 import time
 from typing import Dict, Any
 
 
-def fetch_all_data_with_retry(client, max_retries: int = 2) -> Dict[str, Any]:
+def fetch_all_data_with_retry(client, max_retries: int = 2, save_debug_html: bool = False) -> Dict[str, Any]:
     """
     Fetch all data (day_order, attendance, timetable) with retry on parse failures.
     On retry, reuses existing session cookies instead of full re-authentication.
@@ -15,6 +10,7 @@ def fetch_all_data_with_retry(client, max_retries: int = 2) -> Dict[str, Any]:
     Args:
         client: Authenticated AcademiaClient instance
         max_retries: Maximum number of retry attempts (default: 2)
+        save_debug_html: If True, saves failed HTML responses to files for debugging
     
     Returns:
         dict with keys: success, day_order, attendance_data, timetable_data, error (if failed)
@@ -26,59 +22,47 @@ def fetch_all_data_with_retry(client, max_retries: int = 2) -> Dict[str, Any]:
             print(f"[RETRY] Attempt {attempt + 1}/{max_retries}")
             print("="*60)
             
-            # SMART: Reuse session instead of logout/login
-            print("[RETRY] Refreshing session using existing cookies...")
+            # Try full re-authentication instead of just session refresh
+            print("[RETRY] Performing FULL re-authentication...")
             try:
-                # Get current session data
-                session_data = client.get_session_data()
-                
-                # Clear and reload the session (refresh without re-auth)
+                # Clear everything
                 client.session.cookies.clear()
-                client.load_session_data(session_data)
+                client._setup_session()
                 
-                print("✓ [RETRY] Session refreshed with existing cookies")
-                time.sleep(0.8)  # Small delay for session stability
-                
-            except Exception as e:
-                print(f"⚠ [RETRY] Session refresh error: {e}")
-                print("[RETRY] Attempting fresh login as fallback...")
-                
-                # Fallback to full re-auth only if session refresh fails
-                try:
-                    client.session.cookies.clear()
-                    client._setup_session()
-                    
-                    if not client.lookup_user():
-                        return {
-                            "success": False,
-                            "error": "Lookup failed during retry",
-                            "day_order": None,
-                            "attendance_data": None,
-                            "timetable_data": None
-                        }
-                    
-                    login_result = client.login()
-                    if not login_result.get("success"):
-                        return {
-                            "success": False,
-                            "error": f"Login failed during retry: {login_result.get('message')}",
-                            "day_order": None,
-                            "attendance_data": None,
-                            "timetable_data": None
-                        }
-                    
-                    print("✓ [RETRY] Fallback login successful")
-                    time.sleep(0.5)
-                    
-                except Exception as login_error:
-                    print(f"✗ [RETRY] Fallback login failed: {login_error}")
+                # Fresh lookup and login
+                if not client.lookup_user():
+                    print("✗ [RETRY] Lookup failed on retry")
                     return {
                         "success": False,
-                        "error": f"Retry authentication failed: {str(login_error)}",
+                        "error": "Lookup failed during retry",
                         "day_order": None,
                         "attendance_data": None,
                         "timetable_data": None
                     }
+                
+                login_result = client.login()
+                if not login_result.get("success"):
+                    print(f"✗ [RETRY] Login failed on retry: {login_result.get('message')}")
+                    return {
+                        "success": False,
+                        "error": f"Login failed during retry: {login_result.get('message')}",
+                        "day_order": None,
+                        "attendance_data": None,
+                        "timetable_data": None
+                    }
+                
+                print("✓ [RETRY] Full re-authentication successful")
+                time.sleep(1.0)  # Longer delay after re-auth
+                
+            except Exception as e:
+                print(f"✗ [RETRY] Re-authentication error: {e}")
+                return {
+                    "success": False,
+                    "error": f"Re-authentication failed: {str(e)}",
+                    "day_order": None,
+                    "attendance_data": None,
+                    "timetable_data": None
+                }
         
         try:
             # --- DAY ORDER ---
@@ -123,8 +107,31 @@ def fetch_all_data_with_retry(client, max_retries: int = 2) -> Dict[str, Any]:
                     print("✗ [DATA] Timetable parsing failed")
                 print("⚠"*30 + "\n")
                 
+                # DEBUG: Save HTML to file if debugging is enabled
+                if save_debug_html:
+                    try:
+                        import os
+                        os.makedirs("debug_html", exist_ok=True)
+                        
+                        if attendance_failed:
+                            # Re-fetch to get raw HTML
+                            url = f'{client.BASE_URL}/srm_university/academia-academic-services/page/My_Attendance'
+                            response = client.session.get(url, headers=client._get_page_headers())
+                            with open(f"debug_html/attendance_failed_attempt_{attempt + 1}.html", "w", encoding="utf-8") as f:
+                                f.write(response.text)
+                            print(f"[DEBUG] Saved attendance HTML to debug_html/attendance_failed_attempt_{attempt + 1}.html")
+                        
+                        if timetable_failed:
+                            url = f'{client.BASE_URL}/srm_university/academia-academic-services/page/My_Time_Table_2023_24'
+                            response = client.session.get(url, headers=client._get_page_headers())
+                            with open(f"debug_html/timetable_failed_attempt_{attempt + 1}.html", "w", encoding="utf-8") as f:
+                                f.write(response.text)
+                            print(f"[DEBUG] Saved timetable HTML to debug_html/timetable_failed_attempt_{attempt + 1}.html")
+                    except Exception as debug_error:
+                        print(f"[DEBUG] Failed to save HTML: {debug_error}")
+                
                 if attempt < max_retries - 1:
-                    print(f"[RETRY] Will retry with session refresh (attempt {attempt + 2}/{max_retries})...")
+                    print(f"[RETRY] Will retry with FULL re-authentication (attempt {attempt + 2}/{max_retries})...")
                     continue
                 else:
                     print("[RETRY] Max retries reached - returning partial data")
