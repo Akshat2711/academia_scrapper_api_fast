@@ -104,7 +104,7 @@ async def scrape_portal(request: LoginRequest):
             
             day_order = client.get_day_order()
             if not isinstance(day_order, int) or day_order <= 0:
-                day_order = 4
+                day_order = 3
             
             timetable_data = client.get_timetable()
             
