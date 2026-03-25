@@ -5,9 +5,6 @@ from bs4 import BeautifulSoup
 
 def parse_attendance(html_content: str) -> Dict[str, Any]:
     """Parse attendance HTML to structured JSON matching desired format"""
-
-    with open("attedance.html","w+") as f:
-        f.write(html_content)
     
     # Extract from the JavaScript escaped content
     match = re.search(r"innerHTML = pageSanitizer\.sanitize\('(.+?)'\);", html_content, re.DOTALL)
@@ -197,8 +194,6 @@ def parse_attendance(html_content: str) -> Dict[str, Any]:
 
 #helper function for parsing timetable data
 def parse_timetable(html_content: str) -> Dict[str, Any]:
-    with open("timetable.html","w+") as f:
-        f.write(html_content)
     """Parse timetable HTML to structured JSON with course information"""
     
     # Extract from the JavaScript escaped content

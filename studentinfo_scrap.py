@@ -559,7 +559,7 @@ class AcademiaClient:
             response.raise_for_status()
             
             # Search for day order pattern in the response
-            match = re.search(r'Day\\x20Order\\x3A(\d+)', response.text)
+            match = re.search(r'Day Order:\s*(\d+)', response.text)
             
             if match:
                 day_order = int(match.group(1))
