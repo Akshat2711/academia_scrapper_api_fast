@@ -66,8 +66,6 @@ class AcademiaClient:
             # Static cookies that worked before
             '_uetvid': 'b3000840e89c11ef8036e75565fa990c',
             'zalb_74c3a1eecc': '62cd2f9337f58b07cdaa2f90f0ac1087',
-            'zccpn': 'da3eb9d9-c3f1-418c-a4a7-30a74a3aec85',
-            '_zcsr_tmp': 'da3eb9d9-c3f1-418c-a4a7-30a74a3aec85',
             'cli_rgn': 'IN',
             'zalb_f0e8db9d3d': '983d6a65b2f29022f18db52385bfc639',
             

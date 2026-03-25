@@ -5,6 +5,9 @@ from bs4 import BeautifulSoup
 
 def parse_attendance(html_content: str) -> Dict[str, Any]:
     """Parse attendance HTML to structured JSON matching desired format"""
+
+    with open("attedance.html","w+") as f:
+        f.write(html_content)
     
     # Extract from the JavaScript escaped content
     match = re.search(r"innerHTML = pageSanitizer\.sanitize\('(.+?)'\);", html_content, re.DOTALL)
@@ -12,8 +15,25 @@ def parse_attendance(html_content: str) -> Dict[str, Any]:
         return {"error": "Could not parse HTML"}
     
     # Unescape the JavaScript string
+
     escaped_html = match.group(1)
-    html_decoded = escaped_html.encode().decode('unicode_escape')
+
+    # Handle JS escape sequences manually
+    html_decoded = escaped_html
+    html_decoded = html_decoded.replace("\\'", "'")
+    html_decoded = html_decoded.replace('\\"', '"')
+    html_decoded = html_decoded.replace('\\/', '/')
+    html_decoded = html_decoded.replace('\\-', '-')
+    html_decoded = html_decoded.replace('\\n', '\n')
+    html_decoded = html_decoded.replace('\\t', '\t')
+    html_decoded = html_decoded.replace('\\r', '\r')
+
+    # Handle \xNN hex escapes
+    html_decoded = re.sub(
+        r'\\x([0-9a-fA-F]{2})',
+        lambda m: chr(int(m.group(1), 16)),
+        html_decoded
+    )
     
     soup = BeautifulSoup(html_decoded, 'html.parser')
     
@@ -177,6 +197,8 @@ def parse_attendance(html_content: str) -> Dict[str, Any]:
 
 #helper function for parsing timetable data
 def parse_timetable(html_content: str) -> Dict[str, Any]:
+    with open("timetable.html","w+") as f:
+        f.write(html_content)
     """Parse timetable HTML to structured JSON with course information"""
     
     # Extract from the JavaScript escaped content
@@ -185,13 +207,25 @@ def parse_timetable(html_content: str) -> Dict[str, Any]:
         return {"error": "Could not parse HTML"}
     
     # Unescape the JavaScript string - handle \xNN hex escapes
+
     escaped_html = match.group(1)
-    
-    # Replace hex escapes like \x3C with actual characters
-    def decode_hex(match):
-        return chr(int(match.group(1), 16))
-    
-    html_decoded = re.sub(r'\\x([0-9a-fA-F]{2})', decode_hex, escaped_html)
+
+    # Handle JS escape sequences manually
+    html_decoded = escaped_html
+    html_decoded = html_decoded.replace("\\'", "'")
+    html_decoded = html_decoded.replace('\\"', '"')
+    html_decoded = html_decoded.replace('\\/', '/')
+    html_decoded = html_decoded.replace('\\-', '-')
+    html_decoded = html_decoded.replace('\\n', '\n')
+    html_decoded = html_decoded.replace('\\t', '\t')
+    html_decoded = html_decoded.replace('\\r', '\r')
+
+    # Handle \xNN hex escapes
+    html_decoded = re.sub(
+        r'\\x([0-9a-fA-F]{2})',
+        lambda m: chr(int(m.group(1), 16)),
+        html_decoded
+    )
     
     soup = BeautifulSoup(html_decoded, 'html.parser')
     
