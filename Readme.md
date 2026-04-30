@@ -1,28 +1,29 @@
 # Academia Fast Scraper API
 
-A high-performance FastAPI application for scraping student data from the SRM student portal. Features advanced CAPTCHA solving using OCR and parallel data fetching.
+A high-performance FastAPI application for scraping student data from the SRM student portal. Features advanced OCR-based CAPTCHA handling, session reuse, retry-driven page parsing, and fast endpoint fetches.
 
 ## Features
 
 ✨ **Fast & Efficient**
-- Parallel data fetching (~0.3s for 9 endpoints)
-- Advanced CAPTCHA solving using OpenCV + Tesseract OCR
-- Optimized image preprocessing techniques
-- Connection pooling for HTTP requests
+- Session reuse and lightweight validation for repeated requests
+- Retry-based data fetching on parse failures
+- Optimized CAPTCHA solving using OpenCV + Tesseract OCR
+- Connection pooling and parallel scraping for speed
 
 📊 **Comprehensive Data**
-- Student profile & personal details
+- Student profile and personal details
 - Attendance records
-- Semester results & grades
+- Semester results and grades
 - Timetable
 - Internal marks
 - Hall ticket
-- Personal & subject information
+- Personal and subject information
 
 🛡️ **Robust**
-- Automatic retry mechanism (up to 10 attempts)
-- Error handling & detailed logging
-- Optional dependencies (graceful degradation)
+- Automatic retry mechanism for failed page parsing
+- Session fallback when old session data expires
+- Attendance fallback generation from timetable
+- Detailed error handling and diagnostics
 - CORS enabled for frontend integration
 
 ## Prerequisites
@@ -39,23 +40,9 @@ sudo apt-get install -y tesseract-ocr tesseract-ocr-eng
 ```
 
 ### Python Packages
-All listed in `requirements.txt`:
-- FastAPI
-- Uvicorn
-- Requests
-- BeautifulSoup4
-- OpenCV (cv2)
-- NumPy
-- Pytesseract
-- lxml
-- And more...
+Install required packages from `requirements.txt`. The project uses `opencv-python-headless` for OCR preprocessing in container-friendly environments.
 
 ## Installation
-
-### Quick Setup (Automated)
-```bash
-bash deployment_setup.sh
-```
 
 ### Manual Setup
 1. **Install system dependencies:**
@@ -105,7 +92,7 @@ Response:
 {"status": "ok"}
 ```
 
-### 2. Academia Portal Scraper (Original)
+### 2. Academia Portal Scraper
 ```bash
 POST /scrape
 Content-Type: application/json
@@ -116,7 +103,30 @@ Content-Type: application/json
 }
 ```
 
-### 3. SRM Student Portal Scraper ⭐
+Optional session reuse:
+```json
+{
+  "email": "student_email@example.com",
+  "password": "student_password",
+  "session_data": { ... }
+}
+```
+
+**Response (Success):**
+```json
+{
+  "status": "success",
+  "attendance": { ... },
+  "timetable": { ... },
+  "session_data": { ... },
+  "session_info": {
+    "session_reused": false,
+    "session_type": "new"
+  }
+}
+```
+
+### 3. SRM Student Portal Scraper
 ```bash
 POST /studentportal_result
 Content-Type: application/json
@@ -149,8 +159,7 @@ Content-Type: application/json
     "fetch_time_seconds": 0.33,
     "total_time_seconds": 2.74,
     "parallel_requests": 9
-  },
-  "saved_to": "output/RA2311056010161_20260120_011811.json"
+  }
 }
 ```
 
@@ -163,74 +172,83 @@ Content-Type: application/json
 }
 ```
 
+### 4. Logout Endpoint
+```bash
+POST /logout
+Content-Type: application/json
+
+{
+  "email": "student_email@example.com",
+  "password": "student_password",
+  "session_data": { ... }
+}
+```
+
+**Response (Success):**
+```json
+{
+  "status": "success",
+  "message": "Logged out successfully"
+}
+```
+
 ## How It Works
 
-### CAPTCHA Solving Pipeline
-1. **Fetch CAPTCHA image** from portal
-2. **Image preprocessing:**
-   - 2x upscaling for better accuracy
-   - Multiple threshold variants (adaptive, OTSU, morphological)
-3. **OCR with Tesseract:**
-   - Multiple PSM (Page Segmentation Modes)
-   - Character whitelist filtering
-   - Validation (4-8 alphanumeric characters)
-4. **Return best result** with highest confidence
+### Session Reuse and Fallback
+- `/scrape` can reuse an existing `session_data` payload
+- If the reused session is invalid, the app falls back to fresh login
+- Session validation uses a lightweight attendance request before full scrape
 
-### Login Flow
-1. Fetch login page to extract CSRF token
-2. Solve CAPTCHA (with retry logic)
-3. Send login credentials with CAPTCHA
-4. Verify authentication (check for "logout" button)
-5. If authenticated, proceed to data scraping
+### Retry Fetch Logic
+- `tools/retry_fetch_failed_login.py` retries failed page parsing up to 2 times
+- On retry, the client may re-authenticate fully and refresh the session
+- If timetable parsing fails, attendance is generated from timetable data as a fallback
+
+### CAPTCHA Solving Pipeline
+1. Fetch CAPTCHA image from SRM portal
+2. Preprocess image for OCR
+3. Run Tesseract with multiple configurations
+4. Validate 4-8 alphanumeric characters
+5. Return the best valid CAPTCHA text
 
 ### Data Fetching
-- Parallel requests to 9 endpoints using ThreadPoolExecutor
-- Table parsing with BeautifulSoup
-- Data aggregation and JSON export
-- Automatic save to `output/` directory
+- Parallel requests for target endpoints
+- Fast HTML table parsing with BeautifulSoup
+- Session-aware scraping and retry recovery
 
 ## Performance
 
 **Benchmark Results:**
-- CAPTCHA solving: ~0.2-0.5 seconds (with OCR)
-- Data fetching: ~0.3 seconds (9 parallel requests)
-- Total execution time: ~2-4 seconds
+- CAPTCHA solving: ~0.2-0.5 seconds
+- Data fetching: ~0.3 seconds for parallel requests
+- Full workflow: ~2-4 seconds depending on portal response
 
 ## Troubleshooting
 
 ### CAPTCHA Solver Unavailable
 **Error:** "CAPTCHA solver unavailable (missing cv2/numpy/pytesseract)"
 
-**Solution:** Missing optional dependencies
+**Solution:**
 ```bash
-pip install opencv-python numpy pytesseract
+pip install opencv-python-headless numpy pytesseract
 ```
 
 ### Tesseract Not Found
-**Error:** Related to Tesseract binary not being found
-
-**Solution:** Install Tesseract system package
+**Solution:**
 ```bash
 sudo apt-get install -y tesseract-ocr tesseract-ocr-eng
 ```
 
-### Login Failed (10/10 Attempts)
+### Login / Session Failure
 **Possible causes:**
-1. Invalid credentials
-2. CAPTCHA OCR accuracy issues
-3. Portal temporarily unavailable
-4. Account locked
+- Invalid credentials
+- Expired or invalid session data
+- Portal temporarily unavailable
+- Parsing failure on retrieved HTML
 
-**Solution:**
-- Verify credentials are correct
-- Try again (portal may be temporarily down)
-- Check if account is active on the portal
-
-### ImportError: No module named 'lxml'
-**Solution:**
-```bash
-pip install lxml
-```
+### Parse Failures
+- The retry mechanism attempts to recover from HTML parse issues
+- If attendance parsing fails, mock attendance may be built from timetable data
 
 ## Docker Deployment
 
@@ -240,20 +258,16 @@ FROM python:3.12-slim
 
 WORKDIR /app
 
-# Install system dependencies
 RUN apt-get update && apt-get install -y \
     tesseract-ocr \
     tesseract-ocr-eng \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy requirements and install Python dependencies
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy application
 COPY . .
 
-# Run the application
 CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8000"]
 ```
 
@@ -270,26 +284,23 @@ docker run -p 8000:8000 academia-scraper
 academia_fast_scrapper/
 ├── app.py                          # Main FastAPI application
 ├── requirements.txt                # Python dependencies
-├── deployment_setup.sh            # Deployment script
 ├── Readme.md                       # This file
 ├── Dockerfile                      # Docker configuration
 │
 ├── tools/
-│   ├── studentportal_result.py    # SRM portal scraper logic
+│   ├── studentportal_result.py      # SRM portal scraper logic
 │   ├── fallback_mock_attendance_data.py
-│   └── studentportal_result.py
+│   ├── retry_fetch_failed_login.py  # Retry and recovery logic
+│   └── handle_login_error_codes.py
 │
 ├── utils/
-│   └── parser.py                  # Parsing utilities
+│   └── parser.py                    # Parsing utilities
 │
-├── output/                        # Scraped data storage
-│   └── *.json                     # JSON files with student data
-│
-└── academia_fast_env/             # Virtual environment
+└── academia_fast_env/               # Virtual environment
 ```
 
 ### Adding New Features
-1. Create endpoint in `app.py`
+1. Create a new endpoint in `app.py`
 2. Add scraping logic in `tools/`
 3. Update dependencies in `requirements.txt`
 4. Test locally before deployment
@@ -304,7 +315,7 @@ academia_fast_scrapper/
 - Use HTTPS in production
 
 ⚠️ **Terms of Service**
-- This tool is for educational purposes
+- Use this tool only for permitted educational and self-service scenarios
 - Respect the portal's terms of service
 - Do not overload the server with requests
 - Implement rate limiting if needed
@@ -319,7 +330,7 @@ For issues or questions:
 - Check the troubleshooting section above
 - Review the error messages and logs
 - Verify all dependencies are installed
-- Ensure Tesseract binary is available
+- Ensure the Tesseract binary is available
 
 ## Contributors
 
@@ -327,4 +338,4 @@ For issues or questions:
 
 ---
 
-**Last Updated:** January 2026
+**Last Updated:** May 2026
