@@ -26,6 +26,51 @@ A high-performance FastAPI application for scraping student data from the SRM st
 - Detailed error handling and diagnostics
 - CORS enabled for frontend integration
 
+## Architecture
+
+The project is organized as a lightweight FastAPI service with two scraper flows:
+
+```text
+Client
+  |
+  v
+FastAPI application (app.py)
+  |-- /scrape ----------------------> AcademiaClient (studentinfo_scrap.py)
+  |                                    |-- session reuse and validation
+  |                                    |-- login and CSRF handling
+  |                                    |-- attendance/timetable requests
+  |                                    `-- HTML parsing (utils/parser.py)
+  |
+  |-- /studentportal_result --------> SRM portal scraper (tools/studentportal_result.py)
+  |                                    |-- CAPTCHA download and OCR
+  |                                    |-- login retry flow
+  |                                    |-- 9 parallel data requests
+  |                                    `-- table parsing with BeautifulSoup
+  |
+  `-- /logout ----------------------> Academia session invalidation
+```
+
+### Current Data Flow
+
+- `app.py` validates API requests and coordinates authentication, scraping, fallbacks, and responses.
+- `/scrape` first attempts to reuse the supplied session. Invalid or expired sessions are cleared and replaced with a fresh login.
+- `tools/retry_fetch_failed_login.py` retries failed Academia page parsing with full re-authentication when necessary.
+- If attendance parsing fails but timetable data is available, `tools/fallback_mock_attendance_data.py` derives a fallback attendance response.
+- `tools/studentportal_result.py` uses OpenCV, NumPy, and Tesseract to solve CAPTCHA images, then fetches the student portal's nine data endpoints concurrently through a pooled `requests.Session`.
+- `utils/parser.py` converts Academia's embedded HTML responses into structured attendance, marks, timetable, and student data.
+
+### Runtime Layout
+
+```text
+app.py                                  API routes and orchestration
+studentinfo_scrap.py                   Academia client and session handling
+tools/studentportal_result.py          SRM portal login, OCR, and parallel scraping
+tools/retry_fetch_failed_login.py      Academia retry and re-authentication flow
+tools/fallback_mock_attendance_data.py Timetable-based attendance fallback
+utils/parser.py                        Academia HTML parsers
+Dockerfile                             Python 3.11 + Tesseract container runtime
+```
+
 ## Prerequisites
 
 ### System Requirements
@@ -79,7 +124,7 @@ uvicorn app:app --reload --host 0.0.0.0 --port 8000
 uvicorn app:app --host 0.0.0.0 --port 8000 --workers 4
 ```
 
-The API will be available at `http://localhost:8000`
+The API will be available at `http://localhost:8000` for the development command. The Docker image listens on port `8080`.
 
 ## API Endpoints
 
@@ -238,6 +283,21 @@ pip install opencv-python-headless numpy pytesseract
 ```bash
 sudo apt-get install -y tesseract-ocr tesseract-ocr-eng
 ```
+
+## Contributing
+
+Academia Fast Scraper is open source, and fixes, documentation improvements, tests, and performance work are welcome.
+
+1. Fork the repository and create a focused branch from `master`.
+2. Use the branch naming format `akshat/<type>/<short-description>`.
+  - Fixes: `akshat/fix/what-fixed`
+  - Features: `akshat/feat/what-added`
+  - Documentation: `akshat/docs/what-changed`
+3. Keep changes focused and do not commit credentials, session cookies, CAPTCHA images, or scraped personal data.
+4. Run the available checks locally and update the README when behavior or API contracts change.
+5. Push the branch and open a pull request against `master`. Explain the problem, the change, and how it was verified.
+
+For a bug report, feature request, or help with development, contact the developer at [akshatsrivastava206@gmail.com](mailto:akshatsrivastava206@gmail.com).
 
 ### Login / Session Failure
 **Possible causes:**

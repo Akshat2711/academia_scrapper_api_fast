@@ -27,8 +27,7 @@ except ImportError:
 # Configuration
 BASE_URL = "https://sp.srmist.edu.in/srmiststudentportal"
 LOGIN_PAGE_URL = f"{BASE_URL}/students/loginManager/youLogin.jsp"
-CAPTCHA_URL = f"{BASE_URL}/captchas"
-LOGIN_ACTION_URL = f"{BASE_URL}/students/loginManager/youLogin.jsp"
+LOGIN_ACTION_URL = f"{BASE_URL}/LoginServlet"
 DASHBOARD_URL = f"{BASE_URL}/students/template/HRDSystem.jsp"
 
 # All endpoints
@@ -166,23 +165,38 @@ def scrape_student_portal(netid, password):
             continue
         
         soup = BeautifulSoup(resp.text, 'lxml')
-        csrf_val = soup.find(id="hdnCSRF")
-        csrf_val = csrf_val.get('value', '') if csrf_val else ""
         
-        # Fetch CAPTCHA with retry logic
-        captcha_content = None
-        for captcha_attempt in range(3):  # Try CAPTCHA up to 3 times
-            try:
-                captcha_content = session.get(CAPTCHA_URL, timeout=5).content
-                if len(captcha_content) > 1000:  # Ensure we got actual image data
-                    break
-                else:
-                    print(f"   ⚠️  CAPTCHA fetch attempt {captcha_attempt + 1} returned small data, retrying...")
-                    time.sleep(0.5)  # Wait before retry
-            except Exception as e:
-                print(f"   ⚠️  CAPTCHA fetch failed (attempt {captcha_attempt + 1}): {str(e)}")
-                time.sleep(0.5)
-                continue
+# Extract captcha token from login page
+        import re
+
+        token_match = re.search(
+            r'SCaptchaServlet\?ts=.*?token=([a-z0-9\-]+)',
+            resp.text,
+            re.I
+        )
+
+        if not token_match:
+            print("   ✗ Could not find captcha token")
+            continue
+
+        captcha_token = token_match.group(1)
+
+        captcha_url = (
+            f"{BASE_URL}/SCaptchaServlet"
+            f"?ts={int(time.time()*1000)}"
+            f"&token={captcha_token}"
+        )
+
+        captcha_resp = session.get(captcha_url, timeout=10)
+
+        print("captcha status:", captcha_resp.status_code)
+        print("captcha content-type:", captcha_resp.headers.get("Content-Type"))
+
+        if "image" not in captcha_resp.headers.get("Content-Type", ""):
+            print(captcha_resp.text[:500])
+            continue
+
+        captcha_content = captcha_resp.content
         
         if not captcha_content or len(captcha_content) < 1000:
             print(f"   ✗ CAPTCHA fetch failed after retries")
@@ -214,14 +228,12 @@ def scrape_student_portal(netid, password):
         print(f"   🔤 CAPTCHA solved: {captcha}")
         
         login_payload = {
-            "txtAN": username,
-            "txtSK": password,
-            "hdnCaptcha": captcha,
-            "csrfPreventionSalt": csrf_val,
-            "txtPageAction": "1",
-            "login": "iamalsouser",
-            "passwd": "password",
-            "hdnCSRF": csrf_val
+            "username": username,
+            "password": password,
+            "captcha": captcha,
+            "fpPayload": "",
+            "fpToken": "",
+            "recaptchaToken": ""
         }
         
         try:
@@ -242,13 +254,19 @@ def scrape_student_portal(netid, password):
             print(f"   ✗ Invalid credentials (confirmed by portal)")
             return {"status": "error", "message": "Invalid credentials"}
         
-        try:
-            dash = session.get(DASHBOARD_URL, timeout=10)
-            dash.raise_for_status()
-        except Exception as e:
-            print(f"   ✗ Dashboard fetch failed: {str(e)}")
-            continue
-        
+        # Follow JS redirect manually
+        redirect_resp = session.post(
+            f"{BASE_URL}/students/loginManager/youLogin.jsp",
+            timeout=10
+        )
+
+        print("redirect status:", redirect_resp.status_code)
+
+        dash = session.get(DASHBOARD_URL, timeout=10)
+
+        print("dashboard url:", dash.url)
+        print(dash.text[:1000])
+        print(dash.text.lower())
         if "logout" in dash.text.lower():
             print("   ✅ LOGIN SUCCESS!")
             
