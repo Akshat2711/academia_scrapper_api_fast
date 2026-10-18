@@ -31,6 +31,7 @@ class AcademiaClient:
         self.identifier = None
         self.digest = None
         self.csrf_token = None
+        self._resolved_timetable_url = None
         self._setup_session()
     
     def _setup_session(self):
@@ -531,22 +532,59 @@ class AcademiaClient:
             print(f"✗ Failed to fetch attendance: {str(e)}\n")
             return None
     
+    def _get_timetable_candidates(self) -> List[str]:
+        """Generate candidate timetable URLs based on academic calendar"""
+        from datetime import datetime
+        now = datetime.now()
+        year = now.year
+        month = now.month
+        
+        candidates = []
+        if 1 <= month <= 6:
+            # EVEN semester
+            candidates.append(f"{self.BASE_URL}/srm_university/academia-academic-services/page/My_Time_Table_{year - 1}_{str(year)[-2:]}")
+            candidates.append(f"{self.BASE_URL}/srm_university/academia-academic-services/page/My_Time_Table_{year - 2}_{str(year - 1)[-2:]}")
+        else:
+            # ODD semester
+            candidates.append(f"{self.BASE_URL}/srm_university/academia-academic-services/page/My_Time_Table_{year}_{str(year + 1)[-2:]}")
+            candidates.append(f"{self.BASE_URL}/srm_university/academia-academic-services/page/My_Time_Table_{year - 1}_{str(year)[-2:]}")
+        
+        fallbacks = [
+            f"{self.BASE_URL}/srm_university/academia-academic-services/page/My_Time_Table",
+            f"{self.BASE_URL}/srm_university/academia-academic-services/page/My_Time_Table_2024_25",
+            f"{self.BASE_URL}/srm_university/academia-academic-services/page/My_Time_Table_2023_24"
+        ]
+        for fb in fallbacks:
+            if fb not in candidates:
+                candidates.append(fb)
+        return candidates
+
     def get_timetable(self) -> Optional[Dict[str, Any]]:
-        """Fetch and parse timetable data"""
-        print("Fetching timetable data...")
+        """Fetch and parse timetable data using dynamic semester URL resolution"""
+        print("[BACKEND DATA] Fetching timetable data...")
         
-        url = f'{self.BASE_URL}/srm_university/academia-academic-services/page/My_Time_Table_2023_24'
+        urls_to_try = [self._resolved_timetable_url] if self._resolved_timetable_url else self._get_timetable_candidates()
         
-        try:
-            response = self.session.get(url, headers=self._get_page_headers())
-            response.raise_for_status()
-            
-            print(f"✓ Timetable data retrieved (Status: {response.status_code})\n")
-            return parse_timetable(response.text)
+        for url in urls_to_try:
+            try:
+                response = self.session.get(url, headers=self._get_page_headers())
+                if response.status_code == 200:
+                    text = response.text
+                    # Check for soft 404
+                    if 'error-message-text' in text and 'Page not found' in text:
+                        continue
+                    
+                    parsed = parse_timetable(text)
+                    if parsed and "error" not in parsed:
+                        self._resolved_timetable_url = url
+                        print(f"✓ [BACKEND DATA] Timetable data retrieved from {url.split('/')[-1]} (Status: {response.status_code})\n")
+                        return parsed
+            except Exception as e:
+                print(f"⚠ [BACKEND DATA] Failed to fetch timetable candidate {url.split('/')[-1]}: {str(e)}")
+                continue
                 
-        except Exception as e:
-            print(f"✗ Failed to fetch timetable: {str(e)}\n")
-            return None
+        print("✗ [BACKEND DATA] Failed to fetch timetable from any candidate endpoint\n")
+        return None
         
     def get_day_order(self) -> Optional[int]:
         """Fetch current day order from welcome page"""
@@ -580,7 +618,8 @@ class AcademiaClient:
             'cookies': self.session.cookies.get_dict(),
             'identifier': self.identifier,
             'digest': self.digest,
-            'csrf_token': self.csrf_token
+            'csrf_token': self.csrf_token,
+            'resolved_timetable_url': self._resolved_timetable_url
         }
 
     def load_session_data(self, session_data: dict) -> None:
@@ -590,6 +629,7 @@ class AcademiaClient:
         self.identifier = session_data.get('identifier')
         self.digest = session_data.get('digest')
         self.csrf_token = session_data.get('csrf_token')
+        self._resolved_timetable_url = session_data.get('resolved_timetable_url')
 
 
 # Testing logic main function
