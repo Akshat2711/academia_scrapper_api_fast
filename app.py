@@ -2,7 +2,6 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from fastapi.middleware.cors import CORSMiddleware
 from studentinfo_scrap import AcademiaClient
-from tools.fallback_mock_attendance_data import generate_mock_attendance_from_timetable
 from tools.studentportal_result import scrape_student_portal
 from tools.retry_fetch_failed_login import fetch_all_data_with_retry  # ADD THIS
 from typing import Optional
@@ -130,23 +129,25 @@ async def scrape_portal(request: LoginRequest):
             attendance_data = result['attendance_data']
             timetable_data = result['timetable_data']
 
-        # --- ATTENDANCE FALLBACK ---
+        # --- VALIDATE ATTENDANCE & TIMETABLE DATA ---
+        # Never fabricate mock 0.0 attendance or empty placeholders that overwrite real cached data
         is_attendance_invalid = (
             attendance_data is None or
             (isinstance(attendance_data, dict) and (
                 not attendance_data or 
-                attendance_data.get("error") == "Could not parse HTML"
+                attendance_data.get("error")
             ))
         )
 
-        if is_attendance_invalid and timetable_data and "error" not in timetable_data:
-            print("[DATA] Generating mock attendance from timetable...")
-            attendance_data = generate_mock_attendance_from_timetable(timetable_data)
-            print("✓ [DATA] Mock attendance generated")
+        if is_attendance_invalid:
+            error_msg = attendance_data.get("error", "Failed to fetch attendance data") if isinstance(attendance_data, dict) else "Attendance response is empty"
+            print(f"✗ [DATA] Attendance parse failed: {error_msg}")
+            raise HTTPException(status_code=502, detail=f"Attendance parse error: {error_msg}")
 
-        # --- GUARANTEE ATTENDANCE STRUCTURE ---
-        if attendance_data is None:
-            attendance_data = {}
+        if timetable_data is None or (isinstance(timetable_data, dict) and timetable_data.get("error")):
+            error_msg = timetable_data.get("error", "Failed to fetch timetable data") if isinstance(timetable_data, dict) else "Timetable response is empty"
+            print(f"✗ [DATA] Timetable parse failed: {error_msg}")
+            raise HTTPException(status_code=502, detail=f"Timetable parse error: {error_msg}")
 
         attendance_data["day_order"] = day_order
 
