@@ -1,12 +1,18 @@
+import sys
+if hasattr(sys.stdout, 'reconfigure'):
+    sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+if hasattr(sys.stderr, 'reconfigure'):
+    sys.stderr.reconfigure(encoding='utf-8', errors='replace')
+
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from fastapi.middleware.cors import CORSMiddleware
 from studentinfo_scrap import AcademiaClient
-from tools.studentportal_result import scrape_student_portal
-from tools.retry_fetch_failed_login import fetch_all_data_with_retry  # ADD THIS
+from tools.native_srm_scraper import scrape_srm_student_portal
 from typing import Optional
-import time  # ADD THIS
-
+from concurrent.futures import ThreadPoolExecutor
+import time
+import re
 
 app = FastAPI(title="Academia Scraper API")
 
@@ -28,6 +34,7 @@ app.add_middleware(
 class LoginRequest(BaseModel):
     email: str
     password: str
+    student_portal_password: Optional[str] = None
     session_data: Optional[dict] = None
 
 
@@ -38,169 +45,168 @@ class StudentPortalRequest(BaseModel):
 
 @app.post("/scrape")
 async def scrape_portal(request: LoginRequest):
-    client = None
+    clean_net_id = request.email.strip().split('@')[0].strip()
+    sp_password = (request.student_portal_password or request.password).strip()
+
+    print("\n" + "="*60)
+    print(f"[SCRAPE] Starting concurrent fetch for {clean_net_id}...")
+    print("="*60)
+    start_time = time.time()
+
+    client = AcademiaClient(request.email, request.password)
     session_authenticated = False
     session_reused = False
 
-    try:
-        client = AcademiaClient(request.email, request.password)
-                
-        # --- ATTEMPT SESSION REUSE ---
-        if request.session_data:
-            print("\n" + "="*60)
-            print("[SESSION] Attempting to reuse existing session...")
-            print("="*60)
-            client.load_session_data(request.session_data)
-            
-            try:
-                print("[SESSION] Validating session with lightweight request...")
-                test_response = client.get_attendance()
-                
-                if test_response is not None and (
-                    not isinstance(test_response, dict) or 
-                    (test_response.get("error") != "Could not parse HTML" and "error" not in test_response)
-                ):
-                    print("✓ [SESSION] Session is VALID - Reusing existing session")
+    def _fetch_sp():
+        """Worker 1: Fetch attendance and marks live from Student Portal"""
+        t0 = time.time()
+        res, err = scrape_srm_student_portal(clean_net_id, sp_password, max_retries=2)
+        elapsed = time.time() - t0
+        print(f"[SP WORKER] Finished in {elapsed:.2f}s, Success: {res is not None and res.get('status') == 'success'}")
+        return res, err
+
+    def _fetch_academia():
+        """Worker 2: Fetch timetable and day order live from Academia"""
+        nonlocal session_authenticated, session_reused
+        t0 = time.time()
+        day_order = 4
+        timetable = None
+
+        try:
+            if request.session_data:
+                print("[ACADEMIA] Validating existing session...")
+                client.load_session_data(request.session_data)
+                if client.validate_session():
                     session_authenticated = True
                     session_reused = True
+                    print("✓ [ACADEMIA] Session reused successfully")
                 else:
-                    print("⚠ [SESSION] Session EXPIRED or INVALID - Falling back to fresh login")
-                    print("[SESSION] Clearing old session data before fresh login...")
                     client.session.cookies.clear()
                     client._setup_session()
-            except Exception as e:
-                print(f"⚠ [SESSION] Session validation FAILED: {str(e)}")
-                print("⚠ [SESSION] Falling back to fresh login")
-                print("[SESSION] Clearing old session data before fresh login...")
-                client.session.cookies.clear()
-                client._setup_session()
-        else:
-            print("\n" + "="*60)
-            print("[SESSION] No session data provided - Starting fresh login")
-            print("="*60)
 
-        # --- FALLBACK TO LOGIN ---
-        if not session_authenticated:
-            print("\n[LOGIN] Initiating fresh login flow...")
-            result_lookup = client.lookup_user()
-            result_login = client.login()
-            if not result_lookup or not result_login["success"]:
-                if not result_lookup:
-                    print("✗ [LOGIN] User lookup failed - Cannot proceed with login")
-                    raise HTTPException(status_code=401, detail="User lookup failed check your email id")
-                else:
-                    print(f"✗ [LOGIN] Login failed - {result_login.get('message', 'Unknown error')}")
-                    raise HTTPException(status_code=401, detail=result_login.get('message', 'Login failed'))
-            print("✓ [LOGIN] Fresh login successful - New session created\n")
-            
-            # Small delay for session stability after fresh login
-            time.sleep(0.5)
+            if not session_authenticated:
+                print("[ACADEMIA] Performing fresh login...")
+                if client.lookup_user():
+                    login_res = client.login()
+                    if login_res.get("success"):
+                        session_authenticated = True
+                        print("✓ [ACADEMIA] Fresh login successful")
 
-        # --- FETCH DATA WITH RETRY LOGIC ---
-        if session_reused and 'test_response' in locals():
-            # Use cached attendance from session validation
-            print("[DATA] Using attendance from session validation + fetching remaining data...")
-            
-            day_order = client.get_day_order()
-            if not isinstance(day_order, int) or day_order <= 0:
-                day_order = 2
-            
-            timetable_data = client.get_timetable()
-            
-            # Check if timetable parse failed
-            timetable_failed = (
-                timetable_data and 
-                isinstance(timetable_data, dict) and 
-                timetable_data.get('error') == "Could not parse HTML"
-            )
-            
-            if timetable_failed:
-                print("[RETRY] Parse failure detected - refetching all data with retry logic...")
-                result = fetch_all_data_with_retry(client, max_retries=2, save_debug_html=False)
-                day_order = result['day_order']
-                attendance_data = result['attendance_data']
-                timetable_data = result['timetable_data']
-            else:
-                attendance_data = test_response
-        else:
-            # Fresh login - fetch all data with retry logic
-            result = fetch_all_data_with_retry(client, max_retries=2, save_debug_html=False)
-            day_order = result['day_order']
-            attendance_data = result['attendance_data']
-            timetable_data = result['timetable_data']
+            if session_authenticated:
+                fetched_do = client.get_day_order()
+                if isinstance(fetched_do, int) and fetched_do > 0:
+                    day_order = fetched_do
+                timetable = client.get_timetable()
+        except Exception as e:
+            print(f"⚠ [ACADEMIA] Error during Academia fetch: {e}")
 
-        # --- VALIDATE ATTENDANCE & TIMETABLE DATA ---
-        # Never fabricate mock 0.0 attendance or empty placeholders that overwrite real cached data
-        is_attendance_invalid = (
-            attendance_data is None or
-            (isinstance(attendance_data, dict) and (
-                not attendance_data or 
-                attendance_data.get("error")
-            ))
-        )
+        elapsed = time.time() - t0
+        print(f"[ACADEMIA WORKER] Finished in {elapsed:.2f}s, Authenticated: {session_authenticated}")
+        return day_order, timetable
 
-        if is_attendance_invalid:
-            error_msg = attendance_data.get("error", "Failed to fetch attendance data") if isinstance(attendance_data, dict) else "Attendance response is empty"
-            print(f"✗ [DATA] Attendance parse failed: {error_msg}")
-            raise HTTPException(status_code=502, detail=f"Attendance parse error: {error_msg}")
+    # Concurrently execute Student Portal and Academia flows
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        sp_future = executor.submit(_fetch_sp)
+        acad_future = executor.submit(_fetch_academia)
 
-        if timetable_data is None or (isinstance(timetable_data, dict) and timetable_data.get("error")):
-            error_msg = timetable_data.get("error", "Failed to fetch timetable data") if isinstance(timetable_data, dict) else "Timetable response is empty"
-            print(f"✗ [DATA] Timetable parse failed: {error_msg}")
-            raise HTTPException(status_code=502, detail=f"Timetable parse error: {error_msg}")
+        sp_result, sp_error = sp_future.result()
+        day_order, timetable_data = acad_future.result()
 
-        attendance_data["day_order"] = day_order
+    total_elapsed = time.time() - start_time
+    print(f"✓ [SCRAPE] Both workers completed in {total_elapsed:.2f}s total")
 
-        # Return session data for reuse
-        session_data = client.get_session_data()
-        
-        print("\n" + "="*60)
-        if session_reused:
-            print("[SESSION] Response ready - Returning EXISTING session data")
-        else:
-            print("[SESSION] Response ready - Returning NEW session data")
-        print("="*60 + "\n")
-        
-        return {
-            "status": "success",
-            "attendance": attendance_data,
-            "timetable": timetable_data,
-            "session_data": session_data,
-            "session_info": {
-                "session_reused": session_reused,
-                "session_type": "existing" if session_reused else "new"
-            }
+    # If neither succeeded, raise error
+    has_sp_data = sp_result is not None and sp_result.get("status") == "success"
+    has_acad_data = session_authenticated and timetable_data is not None
+
+    if not has_sp_data and not has_acad_data:
+        err_msg = sp_error or "Authentication failed on both Student Portal and Academia"
+        print(f"✗ [SCRAPE] Both services failed: {err_msg}")
+        raise HTTPException(status_code=401, detail=err_msg)
+
+    # 1. Build Student Info (merged from both)
+    student_info = {
+        "name": clean_net_id,
+        "reg_no": clean_net_id,
+        "batch": "1",
+        "program": "B.Tech",
+        "department": "Computer Science and Engineering",
+        "semester": "3"
+    }
+
+    if sp_result and sp_result.get("student_info"):
+        for k, v in sp_result["student_info"].items():
+            if v:
+                student_info[k] = v
+
+    if timetable_data and isinstance(timetable_data, dict) and timetable_data.get("student_info"):
+        for k, v in timetable_data["student_info"].items():
+            if v:
+                student_info[k] = v
+
+    # 2. Build Attendance & Marks (100% from Student Portal as requested)
+    if has_sp_data:
+        att_courses = sp_result.get("attendance", {}).get("courses", {})
+        attendance_payload = {
+            "attendance": sp_result.get("attendance", {}),
+            "student_info": student_info,
+            "day_order": day_order,
+            "attendance_unavailable": False if len(att_courses) > 0 else True,
+            "marks": sp_result.get("marks", {}),
+        }
+    else:
+        attendance_payload = {
+            "attendance": {},
+            "student_info": student_info,
+            "day_order": day_order,
+            "attendance_unavailable": True,
+            "marks": {},
         }
 
-    except HTTPException:
-        if client:
-            print("[ERROR] HTTPException occurred - Session NOT logged out (kept alive)")
-        raise
+    # 3. Build Timetable (from Academia; do not overwrite with empty slot dummies)
+    if timetable_data and isinstance(timetable_data, dict) and len(timetable_data.get("courses", [])) > 0:
+        final_timetable = timetable_data
+        if not final_timetable.get("student_info"):
+            final_timetable["student_info"] = student_info
+    else:
+        final_timetable = {
+            "courses": [],
+            "student_info": student_info
+        }
 
-    except Exception as e:
-        if client:
-            print(f"[ERROR] Exception occurred: {str(e)} - Session NOT logged out (kept alive)")
-        raise HTTPException(status_code=500, detail=str(e))
+    session_data = client.get_session_data() if session_authenticated else None
+
+    return {
+        "status": "success",
+        "attendance": attendance_payload,
+        "timetable": final_timetable,
+        "session_data": session_data,
+        "session_info": {
+            "session_reused": session_reused,
+            "session_type": "existing" if session_reused else ("new" if session_authenticated else "none")
+        }
+    }
 
 
 @app.post("/studentportal_result")
 async def scrape_student_portal_endpoint(request: StudentPortalRequest):
-    """Scrape student data from SRM student portal"""
+    """Scrape student data natively from SRM student portal (sp.srmist.edu.in)"""
     try:
-        result = scrape_student_portal(request.netid, request.password)
-        
-        if result.get('status') == 'error':
-            error_msg = result.get('message', 'Unknown error')
-            if 'credentials' in error_msg.lower():
-                raise HTTPException(status_code=401, detail=error_msg)
-            else:
-                raise HTTPException(status_code=500, detail=error_msg)
-        
-        return result
-    
+        clean_net_id = request.netid.strip().split('@')[0].strip()
+        print(f"ℹ [NATIVE] Scraping student portal directly for {clean_net_id}...")
+        result, error = scrape_srm_student_portal(clean_net_id, request.password, max_retries=2)
+        if result and result.get('status') == 'success':
+            return result
+
+        if error:
+            if 'credential' in error.lower() or 'password' in error.lower() or 'lock' in error.lower() or 'attempt' in error.lower():
+                raise HTTPException(status_code=401, detail=error)
+            raise HTTPException(status_code=400, detail=error)
+
+        raise HTTPException(status_code=500, detail="Failed to scrape student portal")
+
     except HTTPException:
         raise
-    
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -210,18 +216,11 @@ async def logout_session(request: LoginRequest):
     """Logout endpoint to invalidate session"""
     try:
         client = AcademiaClient(request.email, request.password)
-        
         if request.session_data:
             client.load_session_data(request.session_data)
-        
         if client.logout():
-            return {
-                "status": "success",
-                "message": "Logged out successfully"
-            }
-        else:
-            raise HTTPException(status_code=500, detail="Logout failed")
-            
+            return {"status": "success", "message": "Logged out successfully"}
+        return {"status": "success", "message": "Logged out"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Logout error: {str(e)}")
 

@@ -1,3 +1,4 @@
-
 academia_fast_env
 __pycache__/
+*.html
+scratch/
