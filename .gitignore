@@ -1,3 +1,6 @@
-
 academia_fast_env
 __pycache__/
+*.html
+scratch/
+test_direct_*.py
+*.log

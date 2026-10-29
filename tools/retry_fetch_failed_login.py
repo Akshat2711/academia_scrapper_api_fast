@@ -98,7 +98,7 @@ def fetch_all_data_with_retry(client, max_retries: int = 2, save_debug_html: boo
                 timetable_data.get('error') == "Could not parse HTML"
             )
             
-            if attendance_failed or timetable_failed:
+            if timetable_failed:
                 print("\n" + "⚠"*30)
                 print("[PARSE ERROR] Data corruption detected!")
                 if attendance_failed:

@@ -15,11 +15,18 @@ def generate_mock_attendance_from_timetable(timetable_data):
     mock_marks = {}
 
     for course in courses_list:
-        # Standardize naming: e.g., 'Lab Based Theory' -> 'Theory'
         raw_type = course.get("course_type", "Theory")
-        category = "Practical" if "Practical" in raw_type or "Lab" in raw_type else "Theory"
+        slot = course.get("slot", "")
+        # Differentiate Theory vs Practical:
+        # In SRM: slot starting with P (e.g. P47-P48-, P27-P28-, P7-) indicates Practical / Lab slot
+        if "practical" in raw_type.lower():
+            category = "Practical"
+        elif slot.upper().startswith("P") and ("lab" in raw_type.lower() or "practical" in raw_type.lower()):
+            category = "Practical"
+        else:
+            category = "Theory"
         
-        # Course Key format: 21CSC302JRegularTheory
+        # Course Key format: 21CSC302JRegularTheory or 21CSC302JRegularPractical
         course_key = f"{course['course_code']}Regular{category}"
         
         # 1. Map Attendance (Setting all values to 0)
