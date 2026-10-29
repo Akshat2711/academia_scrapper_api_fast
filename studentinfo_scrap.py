@@ -1487,9 +1487,9 @@ def main():
 
     # Configuration
 
-    EMAIL = "as0711@srmist.edu.in"
+    EMAIL = os.getenv("ACADEMIA_EMAIL", "")
 
-    PASSWORD = "pass"
+    PASSWORD = os.getenv("ACADEMIA_PASSWORD", "")
 
     
 

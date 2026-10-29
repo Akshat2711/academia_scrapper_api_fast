@@ -69,7 +69,7 @@ async def scrape_portal(request: LoginRequest):
         """Worker 2: Fetch timetable and day order live from Academia"""
         nonlocal session_authenticated, session_reused
         t0 = time.time()
-        day_order = 4
+        day_order = None
         timetable = None
 
         try:
@@ -124,25 +124,43 @@ async def scrape_portal(request: LoginRequest):
         print(f"✗ [SCRAPE] Both services failed: {err_msg}")
         raise HTTPException(status_code=401, detail=err_msg)
 
-    # 1. Build Student Info (merged from both)
+    # 1. Build Student Info (merged dynamically from both sources)
     student_info = {
         "name": clean_net_id,
         "reg_no": clean_net_id,
-        "batch": "1",
-        "program": "B.Tech",
-        "department": "Computer Science and Engineering",
-        "semester": "3"
+        "batch": "",
+        "program": "",
+        "department": "",
+        "semester": ""
     }
 
-    if sp_result and sp_result.get("student_info"):
-        for k, v in sp_result["student_info"].items():
-            if v:
-                student_info[k] = v
-
     if timetable_data and isinstance(timetable_data, dict) and timetable_data.get("student_info"):
-        for k, v in timetable_data["student_info"].items():
-            if v:
-                student_info[k] = v
+        tt_info = timetable_data["student_info"]
+        if tt_info.get("registration_number"):
+            student_info["reg_no"] = tt_info["registration_number"]
+        if tt_info.get("name"):
+            student_info["name"] = tt_info["name"]
+        if tt_info.get("program"):
+            student_info["program"] = tt_info["program"]
+        if tt_info.get("department"):
+            student_info["department"] = tt_info["department"]
+        if tt_info.get("semester"):
+            student_info["semester"] = tt_info["semester"]
+        if tt_info.get("batch"):
+            student_info["batch"] = tt_info["batch"]
+        if tt_info.get("photo_url"):
+            student_info["photo_url"] = tt_info["photo_url"]
+
+    if sp_result and sp_result.get("student_info"):
+        sp_info = sp_result["student_info"]
+        if sp_info.get("reg_no"):
+            student_info["reg_no"] = sp_info["reg_no"]
+        if sp_info.get("name") and student_info["name"] == clean_net_id:
+            student_info["name"] = sp_info["name"]
+        if sp_info.get("photo_url") and not student_info.get("photo_url"):
+            student_info["photo_url"] = sp_info["photo_url"]
+
+    student_info["registration_number"] = student_info["reg_no"]
 
     # 2. Build Attendance & Marks (100% from Student Portal as requested)
     if has_sp_data:
